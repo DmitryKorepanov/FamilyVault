@@ -7,6 +7,7 @@
 #include "familyvault/SearchEngine.h"
 #include "familyvault/TagManager.h"
 #include "familyvault/DuplicateFinder.h"
+#include "familyvault/ContentIndexer.h"
 #include "familyvault/Models.h"
 
 #include <nlohmann/json.hpp>
@@ -103,6 +104,7 @@ struct ManagerWrapper {
 using IndexManagerWrapper = ManagerWrapper<IndexManager>;
 using SearchEngineWrapper = ManagerWrapper<SearchEngine>;
 using TagManagerWrapper = ManagerWrapper<TagManager>;
+using ContentIndexerWrapper = ManagerWrapper<ContentIndexer>;
 
 /// DuplicateFinder wrapper also stores optional IndexManager reference
 struct DuplicateFinderWrapper {
@@ -412,6 +414,51 @@ FVError fv_index_remove_folder(FVIndexManager mgr, int64_t folder_id) {
     }
 }
 
+FVError fv_index_optimize_database(FVIndexManager mgr) {
+    if (!mgr) {
+        setLastError(FV_ERROR_INVALID_ARGUMENT, "Null index manager");
+        return FV_ERROR_INVALID_ARGUMENT;
+    }
+    
+    try {
+        reinterpret_cast<IndexManagerWrapper*>(mgr)->get()->optimizeDatabase();
+        setLastError(FV_OK);
+        return FV_OK;
+    } catch (const std::exception& e) {
+        setLastError(FV_ERROR_DATABASE, e.what());
+        return FV_ERROR_DATABASE;
+    }
+}
+
+int fv_index_get_max_text_size_kb(FVIndexManager mgr) {
+    if (!mgr) {
+        setLastError(FV_ERROR_INVALID_ARGUMENT, "Null index manager");
+        return 100; // default
+    }
+    
+    try {
+        return reinterpret_cast<IndexManagerWrapper*>(mgr)->get()->getMaxTextSizeKB();
+    } catch (...) {
+        return 100;
+    }
+}
+
+FVError fv_index_set_max_text_size_kb(FVIndexManager mgr, int size_kb) {
+    if (!mgr) {
+        setLastError(FV_ERROR_INVALID_ARGUMENT, "Null index manager");
+        return FV_ERROR_INVALID_ARGUMENT;
+    }
+    
+    try {
+        reinterpret_cast<IndexManagerWrapper*>(mgr)->get()->setMaxTextSizeKB(size_kb);
+        setLastError(FV_OK);
+        return FV_OK;
+    } catch (const std::exception& e) {
+        setLastError(FV_ERROR_DATABASE, e.what());
+        return FV_ERROR_DATABASE;
+    }
+}
+
 char* fv_index_get_folders(FVIndexManager mgr) {
     if (!mgr) {
         setLastError(FV_ERROR_INVALID_ARGUMENT, "Null index manager");
@@ -619,6 +666,22 @@ FVError fv_index_set_folder_visibility(FVIndexManager mgr, int64_t folder_id, in
     try {
         reinterpret_cast<IndexManagerWrapper*>(mgr)->get()->setFolderVisibility(folder_id,
             static_cast<Visibility>(visibility));
+        setLastError(FV_OK);
+        return FV_OK;
+    } catch (const std::exception& e) {
+        setLastError(FV_ERROR_DATABASE, e.what());
+        return FV_ERROR_DATABASE;
+    }
+}
+
+FVError fv_index_set_folder_enabled(FVIndexManager mgr, int64_t folder_id, int32_t enabled) {
+    if (!mgr) {
+        setLastError(FV_ERROR_INVALID_ARGUMENT, "Null index manager");
+        return FV_ERROR_INVALID_ARGUMENT;
+    }
+    
+    try {
+        reinterpret_cast<IndexManagerWrapper*>(mgr)->get()->setFolderEnabled(folder_id, enabled != 0);
         setLastError(FV_OK);
         return FV_OK;
     } catch (const std::exception& e) {
@@ -1021,6 +1084,198 @@ FVError fv_duplicates_compute_checksums(FVDuplicateFinder finder,
     } catch (const std::exception& e) {
         setLastError(FV_ERROR_IO, e.what());
         return FV_ERROR_IO;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Content Indexer
+// ═══════════════════════════════════════════════════════════
+
+FVContentIndexer fv_content_indexer_create(FVDatabase db) {
+    if (!db) {
+        setLastError(FV_ERROR_INVALID_ARGUMENT, "Null database handle");
+        return nullptr;
+    }
+    
+    try {
+        auto* holder = reinterpret_cast<DatabaseHolder*>(db);
+        auto* indexer = new ContentIndexer(holder->getDatabase());
+        auto* wrapper = new ContentIndexerWrapper(indexer, holder);
+        setLastError(FV_OK);
+        return reinterpret_cast<FVContentIndexer>(wrapper);
+    } catch (const std::exception& e) {
+        setLastError(FV_ERROR_INTERNAL, e.what());
+        return nullptr;
+    }
+}
+
+void fv_content_indexer_destroy(FVContentIndexer indexer) {
+    if (indexer) {
+        delete reinterpret_cast<ContentIndexerWrapper*>(indexer);
+    }
+}
+
+FVError fv_content_indexer_start(FVContentIndexer indexer) {
+    if (!indexer) {
+        setLastError(FV_ERROR_INVALID_ARGUMENT, "Null content indexer");
+        return FV_ERROR_INVALID_ARGUMENT;
+    }
+    
+    try {
+        reinterpret_cast<ContentIndexerWrapper*>(indexer)->get()->start();
+        setLastError(FV_OK);
+        return FV_OK;
+    } catch (const std::exception& e) {
+        setLastError(FV_ERROR_INTERNAL, e.what());
+        return FV_ERROR_INTERNAL;
+    }
+}
+
+FVError fv_content_indexer_stop(FVContentIndexer indexer, int32_t wait) {
+    if (!indexer) {
+        setLastError(FV_ERROR_INVALID_ARGUMENT, "Null content indexer");
+        return FV_ERROR_INVALID_ARGUMENT;
+    }
+    
+    try {
+        reinterpret_cast<ContentIndexerWrapper*>(indexer)->get()->stop(wait != 0);
+        setLastError(FV_OK);
+        return FV_OK;
+    } catch (const std::exception& e) {
+        setLastError(FV_ERROR_INTERNAL, e.what());
+        return FV_ERROR_INTERNAL;
+    }
+}
+
+int32_t fv_content_indexer_is_running(FVContentIndexer indexer) {
+    if (!indexer) return 0;
+    return reinterpret_cast<ContentIndexerWrapper*>(indexer)->get()->isRunning() ? 1 : 0;
+}
+
+FVError fv_content_indexer_process_file(FVContentIndexer indexer, int64_t file_id) {
+    if (!indexer) {
+        setLastError(FV_ERROR_INVALID_ARGUMENT, "Null content indexer");
+        return FV_ERROR_INVALID_ARGUMENT;
+    }
+    
+    try {
+        bool success = reinterpret_cast<ContentIndexerWrapper*>(indexer)->get()->processFile(file_id);
+        setLastError(FV_OK);
+        return success ? FV_OK : FV_ERROR_NOT_FOUND;
+    } catch (const std::exception& e) {
+        setLastError(FV_ERROR_IO, e.what());
+        return FV_ERROR_IO;
+    }
+}
+
+int32_t fv_content_indexer_enqueue_unprocessed(FVContentIndexer indexer) {
+    if (!indexer) {
+        setLastError(FV_ERROR_INVALID_ARGUMENT, "Null content indexer");
+        return -1;
+    }
+    
+    try {
+        int count = reinterpret_cast<ContentIndexerWrapper*>(indexer)->get()->enqueueUnprocessed();
+        setLastError(FV_OK);
+        return count;
+    } catch (const std::exception& e) {
+        setLastError(FV_ERROR_DATABASE, e.what());
+        return -1;
+    }
+}
+
+char* fv_content_indexer_get_status(FVContentIndexer indexer) {
+    if (!indexer) {
+        setLastError(FV_ERROR_INVALID_ARGUMENT, "Null content indexer");
+        return nullptr;
+    }
+    
+    try {
+        auto status = reinterpret_cast<ContentIndexerWrapper*>(indexer)->get()->getStatus();
+        json j = {
+            {"pending", status.pending},
+            {"processed", status.processed},
+            {"failed", status.failed},
+            {"isRunning", status.isRunning},
+            {"currentFile", status.currentFile}
+        };
+        setLastError(FV_OK);
+        return alloc_string(j.dump());
+    } catch (const std::exception& e) {
+        setLastError(FV_ERROR_INTERNAL, e.what());
+        return nullptr;
+    }
+}
+
+void fv_content_indexer_set_max_text_size_kb(FVContentIndexer indexer, int32_t size_kb) {
+    if (!indexer) return;
+    reinterpret_cast<ContentIndexerWrapper*>(indexer)->get()->setMaxTextSizeKB(size_kb);
+}
+
+int32_t fv_content_indexer_get_max_text_size_kb(FVContentIndexer indexer) {
+    if (!indexer) return 100;
+    return reinterpret_cast<ContentIndexerWrapper*>(indexer)->get()->getMaxTextSizeKB();
+}
+
+int32_t fv_content_indexer_get_pending_count(FVContentIndexer indexer) {
+    if (!indexer) {
+        setLastError(FV_ERROR_INVALID_ARGUMENT, "Null content indexer");
+        return -1;
+    }
+    
+    try {
+        int count = reinterpret_cast<ContentIndexerWrapper*>(indexer)->get()->getPendingCount();
+        setLastError(FV_OK);
+        return count;
+    } catch (const std::exception& e) {
+        setLastError(FV_ERROR_DATABASE, e.what());
+        return -1;
+    }
+}
+
+FVError fv_content_indexer_reindex_all(FVContentIndexer indexer,
+                                        FVContentProgressCallback cb, void* user_data) {
+    if (!indexer) {
+        setLastError(FV_ERROR_INVALID_ARGUMENT, "Null content indexer");
+        return FV_ERROR_INVALID_ARGUMENT;
+    }
+    
+    try {
+        reinterpret_cast<ContentIndexerWrapper*>(indexer)->get()->reindexAll(
+            [cb, user_data](int processed, int total) {
+                if (cb) {
+                    cb(processed, total, user_data);
+                }
+            }
+        );
+        setLastError(FV_OK);
+        return FV_OK;
+    } catch (const std::exception& e) {
+        setLastError(FV_ERROR_IO, e.what());
+        return FV_ERROR_IO;
+    }
+}
+
+int32_t fv_content_indexer_can_extract(FVContentIndexer indexer, const char* mime_type) {
+    if (!indexer || !mime_type) {
+        return 0;
+    }
+    
+    try {
+        // ContentIndexer использует внутренний TextExtractorRegistry
+        // Для этой проверки нужен доступ к registry
+        // Пока просто проверяем известные типы
+        std::string mt(mime_type);
+        if (mt.starts_with("text/") ||
+            mt == "application/pdf" ||
+            mt == "application/json" ||
+            mt.find("openxmlformats") != std::string::npos ||
+            mt.find("opendocument") != std::string::npos) {
+            return 1;
+        }
+        return 0;
+    } catch (...) {
+        return 0;
     }
 }
 

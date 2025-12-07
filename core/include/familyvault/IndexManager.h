@@ -43,6 +43,25 @@ public:
 
     /// Удалить папку и все её файлы из индекса
     void removeFolder(int64_t folderId);
+    
+    /// Оптимизация БД (rebuild FTS + VACUUM)
+    void optimizeDatabase();
+    
+    // ═══════════════════════════════════════════════════════════
+    // Настройки
+    // ═══════════════════════════════════════════════════════════
+    
+    /// Получить настройку
+    std::string getSetting(const std::string& key, const std::string& defaultValue = "") const;
+    
+    /// Установить настройку
+    void setSetting(const std::string& key, const std::string& value);
+    
+    /// Получить максимальный размер текста для индексации (KB)
+    int getMaxTextSizeKB() const;
+    
+    /// Установить максимальный размер текста для индексации (KB)
+    void setMaxTextSizeKB(int sizeKB);
 
     /// Включить/отключить папку
     void setFolderEnabled(int64_t folderId, bool enabled);

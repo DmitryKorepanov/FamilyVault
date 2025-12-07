@@ -9,6 +9,13 @@
     "openssl",
     "nlohmann-json",
     "spdlog",
-    "gtest"
+    "gtest",
+    "poppler",
+    "libzip",
+    "pugixml",
+    {
+      "name": "pkgconf",
+      "host": true
+    }
   ]
 }

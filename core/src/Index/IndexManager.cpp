@@ -69,9 +69,80 @@ int64_t IndexManager::addFolder(const std::string& path, const std::string& name
 }
 
 void IndexManager::removeFolder(int64_t folderId) {
-    // CASCADE удалит все файлы
+    // CASCADE удалит все файлы и file_content
+    // Триггер files_fts_delete удалит записи из FTS
     m_db->execute("DELETE FROM watched_folders WHERE id = ?", folderId);
     spdlog::info("Removed folder id={}", folderId);
+    
+    // VACUUM чтобы освободить место на диске
+    try {
+        m_db->execute("VACUUM");
+        spdlog::info("Database vacuumed after folder removal");
+    } catch (const std::exception& e) {
+        spdlog::warn("VACUUM failed: {}", e.what());
+    }
+}
+
+void IndexManager::optimizeDatabase() {
+    spdlog::info("Starting database optimization...");
+    
+    // Rebuild FTS index
+    try {
+        m_db->execute("INSERT INTO files_fts(files_fts) VALUES('rebuild')");
+        spdlog::info("FTS index rebuilt");
+    } catch (const std::exception& e) {
+        spdlog::warn("FTS rebuild failed: {}", e.what());
+    }
+    
+    // VACUUM
+    try {
+        m_db->execute("VACUUM");
+        spdlog::info("Database vacuumed");
+    } catch (const std::exception& e) {
+        spdlog::warn("VACUUM failed: {}", e.what());
+    }
+    
+    spdlog::info("Database optimization completed");
+}
+
+// ═══════════════════════════════════════════════════════════
+// Настройки
+// ═══════════════════════════════════════════════════════════
+
+std::string IndexManager::getSetting(const std::string& key, const std::string& defaultValue) const {
+    auto result = m_db->queryOne<std::string>(
+        "SELECT value FROM settings WHERE key = ?",
+        [](sqlite3_stmt* stmt) {
+            return Database::getString(stmt, 0);
+        },
+        key
+    );
+    return result.value_or(defaultValue);
+}
+
+void IndexManager::setSetting(const std::string& key, const std::string& value) {
+    // INSERT OR IGNORE + UPDATE вместо INSERT OR REPLACE (coding guidelines)
+    m_db->execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
+        key, value
+    );
+    m_db->execute(
+        "UPDATE settings SET value = ? WHERE key = ?",
+        value, key
+    );
+}
+
+int IndexManager::getMaxTextSizeKB() const {
+    auto value = getSetting("max_text_size_kb", "100");
+    try {
+        return std::stoi(value);
+    } catch (...) {
+        return 100; // default
+    }
+}
+
+void IndexManager::setMaxTextSizeKB(int sizeKB) {
+    setSetting("max_text_size_kb", std::to_string(sizeKB));
 }
 
 void IndexManager::setFolderEnabled(int64_t folderId, bool enabled) {

@@ -22,6 +22,7 @@ typedef struct FVIndexManager_* FVIndexManager;
 typedef struct FVSearchEngine_* FVSearchEngine;
 typedef struct FVTagManager_* FVTagManager;
 typedef struct FVDuplicateFinder_* FVDuplicateFinder;
+typedef struct FVContentIndexer_* FVContentIndexer;
 
 // ═══════════════════════════════════════════════════════════
 // Коды ошибок
@@ -103,6 +104,15 @@ FV_API int64_t fv_index_add_folder(FVIndexManager mgr, const char* path,
 /// Удалить папку из отслеживания
 FV_API FVError fv_index_remove_folder(FVIndexManager mgr, int64_t folder_id);
 
+/// Оптимизация БД (rebuild FTS + VACUUM)
+FV_API FVError fv_index_optimize_database(FVIndexManager mgr);
+
+/// Получить максимальный размер текста для индексации (KB)
+FV_API int fv_index_get_max_text_size_kb(FVIndexManager mgr);
+
+/// Установить максимальный размер текста для индексации (KB)
+FV_API FVError fv_index_set_max_text_size_kb(FVIndexManager mgr, int size_kb);
+
 /// Получить список папок (JSON array)
 /// @return JSON строка или nullptr при ошибке (см. fv_last_error)
 FV_API char* fv_index_get_folders(FVIndexManager mgr);
@@ -148,6 +158,9 @@ FV_API char* fv_index_get_stats(FVIndexManager mgr);
 
 /// Установить видимость папки
 FV_API FVError fv_index_set_folder_visibility(FVIndexManager mgr, int64_t folder_id, int32_t visibility);
+
+/// Включить/отключить папку
+FV_API FVError fv_index_set_folder_enabled(FVIndexManager mgr, int64_t folder_id, int32_t enabled);
 
 /// Установить видимость файла
 FV_API FVError fv_index_set_file_visibility(FVIndexManager mgr, int64_t file_id, int32_t visibility);
@@ -244,6 +257,59 @@ FV_API FVError fv_duplicates_delete_file(FVDuplicateFinder finder, int64_t file_
 typedef void (*FVChecksumProgressCallback)(int32_t processed, int32_t total, void* user_data);
 FV_API FVError fv_duplicates_compute_checksums(FVDuplicateFinder finder,
                                                 FVChecksumProgressCallback cb, void* user_data);
+
+// ═══════════════════════════════════════════════════════════
+// Content Indexer (Text Extraction)
+// ═══════════════════════════════════════════════════════════
+
+/// Создать ContentIndexer
+/// @note Увеличивает reference count базы данных
+FV_API FVContentIndexer fv_content_indexer_create(FVDatabase db);
+
+/// Уничтожить ContentIndexer
+/// @note Автоматически останавливает фоновую обработку
+FV_API void fv_content_indexer_destroy(FVContentIndexer indexer);
+
+/// Запустить фоновую обработку текста
+FV_API FVError fv_content_indexer_start(FVContentIndexer indexer);
+
+/// Остановить фоновую обработку
+/// @param wait 1 - ожидать завершения текущего файла
+FV_API FVError fv_content_indexer_stop(FVContentIndexer indexer, int32_t wait);
+
+/// Проверить, запущена ли обработка
+FV_API int32_t fv_content_indexer_is_running(FVContentIndexer indexer);
+
+/// Обработать конкретный файл (синхронно)
+/// @return FV_OK если текст успешно извлечён
+FV_API FVError fv_content_indexer_process_file(FVContentIndexer indexer, int64_t file_id);
+
+/// Добавить все необработанные файлы в очередь
+/// @return Количество добавленных файлов или -1 при ошибке
+FV_API int32_t fv_content_indexer_enqueue_unprocessed(FVContentIndexer indexer);
+
+/// Получить статус (JSON)
+/// @return JSON с полями: pending, processed, failed, isRunning, currentFile
+FV_API char* fv_content_indexer_get_status(FVContentIndexer indexer);
+
+/// Установить максимальный размер текста для индексации (KB)
+FV_API void fv_content_indexer_set_max_text_size_kb(FVContentIndexer indexer, int32_t size_kb);
+
+/// Получить максимальный размер текста для индексации (KB)
+FV_API int32_t fv_content_indexer_get_max_text_size_kb(FVContentIndexer indexer);
+
+/// Получить количество файлов без извлечённого текста
+FV_API int32_t fv_content_indexer_get_pending_count(FVContentIndexer indexer);
+
+/// Callback для прогресса индексации контента
+typedef void (*FVContentProgressCallback)(int32_t processed, int32_t total, void* user_data);
+
+/// Переиндексировать все файлы (синхронно, блокирует)
+FV_API FVError fv_content_indexer_reindex_all(FVContentIndexer indexer,
+                                               FVContentProgressCallback cb, void* user_data);
+
+/// Проверить, поддерживается ли MIME тип для извлечения текста
+FV_API int32_t fv_content_indexer_can_extract(FVContentIndexer indexer, const char* mime_type);
 
 #ifdef __cplusplus
 }

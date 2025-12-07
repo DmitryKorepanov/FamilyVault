@@ -17,11 +17,11 @@ Database::Database(const std::string& dbPath) : m_dbPath(dbPath) {
     }
 
     // Настройки для производительности и надёжности
-    execute("PRAGMA journal_mode = WAL");
-    execute("PRAGMA busy_timeout = 30000");  // 30 seconds for large folders
+    execute("PRAGMA journal_mode = DELETE");  // DELETE режим — VACUUM работает корректно
+    execute("PRAGMA busy_timeout = 30000");   // 30 seconds for large folders
     execute("PRAGMA foreign_keys = ON");
     execute("PRAGMA synchronous = NORMAL");
-    execute("PRAGMA cache_size = -64000");  // 64MB cache
+    execute("PRAGMA cache_size = -64000");    // 64MB cache
 
     spdlog::info("Database opened: {}", dbPath);
 }

@@ -1,4 +1,5 @@
 #include "familyvault/Database.h"
+#include <sqlite3.h>
 #include <spdlog/spdlog.h>
 #include <array>
 
@@ -131,40 +132,23 @@ CREATE TABLE IF NOT EXISTS file_tags (
 CREATE INDEX IF NOT EXISTS idx_file_tags_tag ON file_tags(tag_id);
 CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
 
--- Full-text search
+-- Full-text search (обычная таблица, не contentless — поддерживает rebuild)
 CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5(
     name,
     relative_path,
     content,
-    content='',
     tokenize='unicode61 remove_diacritics 2'
 );
 
--- FTS триггеры
+-- Триггер: добавление файла → создаём запись в FTS
 CREATE TRIGGER IF NOT EXISTS files_fts_insert AFTER INSERT ON files BEGIN
     INSERT INTO files_fts(rowid, name, relative_path, content)
     VALUES (new.id, new.name, new.relative_path, '');
 END;
 
+-- Триггер: удаление файла → удаляем из FTS
 CREATE TRIGGER IF NOT EXISTS files_fts_delete AFTER DELETE ON files BEGIN
-    INSERT INTO files_fts(files_fts, rowid, name, relative_path, content)
-    VALUES ('delete', old.id, old.name, old.relative_path, '');
-END;
-
-CREATE TRIGGER IF NOT EXISTS files_fts_update AFTER UPDATE ON files BEGIN
-    INSERT INTO files_fts(files_fts, rowid, name, relative_path, content)
-    VALUES ('delete', old.id, old.name, old.relative_path, '');
-    INSERT INTO files_fts(rowid, name, relative_path, content)
-    VALUES (new.id, new.name, new.relative_path, 
-            COALESCE((SELECT content FROM file_content WHERE file_id = new.id), ''));
-END;
-
-CREATE TRIGGER IF NOT EXISTS content_fts_insert AFTER INSERT ON file_content BEGIN
-    UPDATE files_fts SET content = new.content WHERE rowid = new.file_id;
-END;
-
-CREATE TRIGGER IF NOT EXISTS content_fts_update AFTER UPDATE ON file_content BEGIN
-    UPDATE files_fts SET content = new.content WHERE rowid = new.file_id;
+    DELETE FROM files_fts WHERE rowid = old.id;
 END;
 
 -- View для эффективной visibility
@@ -182,6 +166,19 @@ CREATE TABLE IF NOT EXISTS sync_state (
     last_sync_at INTEGER,
     needs_full_resync INTEGER DEFAULT 0
 );
+    )SQL"},
+    
+    Migration{2, "Reset extracted_at to trigger re-indexing", R"SQL(
+-- Сбрасываем extracted_at чтобы все существующие файлы были переиндексированы
+-- enqueueUnprocessed() подхватит их (modified_at > extracted_at)
+UPDATE file_content SET extracted_at = 0;
+
+-- Очищаем FTS для полной пересборки
+DELETE FROM files_fts;
+
+-- Заполняем FTS базовыми данными из files (content будет добавлен при извлечении)
+INSERT INTO files_fts(rowid, name, relative_path, content)
+SELECT id, name, relative_path, '' FROM files;
     )SQL"}
 };
 
@@ -207,61 +204,50 @@ int Database::getCurrentVersion() {
             return getInt(stmt, 0);
         }
     );
-
+    
     return version.value_or(0);
-}
-
-void Database::setVersion(int version, const std::string& description) {
-    execute("INSERT INTO schema_version (version, description) VALUES (?, ?)",
-            version, description);
 }
 
 void Database::applyMigrations() {
     int currentVersion = getCurrentVersion();
-    int targetVersion = MIGRATIONS.back().version;
-
-    if (currentVersion >= targetVersion) {
-        spdlog::info("Database schema is up to date (version {})", currentVersion);
-        return;
-    }
-
-    spdlog::info("Applying database migrations: {} -> {}", currentVersion, targetVersion);
+    spdlog::info("Database version: {}, latest: {}", currentVersion, MIGRATIONS.size());
 
     for (const auto& migration : MIGRATIONS) {
-        if (migration.version > currentVersion) {
-            spdlog::info("Applying migration {}: {}", migration.version, migration.description);
+        if (migration.version <= currentVersion) {
+            continue;
+        }
 
-            Transaction tx(*this);
-            try {
-                // Выполняем SQL миграции
-                execute(migration.sql);
-
-                // Записываем версию (если таблица уже создана в этой миграции)
-                if (migration.version == 1) {
-                    // Первая миграция создаёт таблицу, версия уже вставлена в SQL
-                } else {
-                    setVersion(migration.version, migration.description);
-                }
-
-                tx.commit();
-                spdlog::info("Migration {} applied successfully", migration.version);
-            } catch (const std::exception& e) {
-                spdlog::error("Migration {} failed: {}", migration.version, e.what());
-                throw;
+        spdlog::info("Applying migration {}: {}", migration.version, migration.description);
+        
+        try {
+            execute("BEGIN EXCLUSIVE TRANSACTION");
+            
+            // Выполняем SQL миграции
+            char* errMsg = nullptr;
+            int rc = sqlite3_exec(m_db, migration.sql, nullptr, nullptr, &errMsg);
+            if (rc != SQLITE_OK) {
+                std::string error = errMsg ? errMsg : "Unknown error";
+                sqlite3_free(errMsg);
+                execute("ROLLBACK");
+                throw std::runtime_error("Migration failed: " + error);
             }
+            
+            // Записываем версию
+            execute(
+                "INSERT INTO schema_version (version, description) VALUES (?, ?)",
+                migration.version, migration.description
+            );
+            
+            execute("COMMIT");
+            spdlog::info("Migration {} completed", migration.version);
+            
+        } catch (const std::exception& e) {
+            spdlog::error("Migration {} failed: {}", migration.version, e.what());
+            throw;
         }
     }
-
-    // Вставляем запись о первой версии, если её ещё нет
-    if (currentVersion == 0) {
-        auto count = queryScalar("SELECT COUNT(*) FROM schema_version WHERE version = 1");
-        if (count == 0) {
-            setVersion(1, MIGRATIONS[0].description);
-        }
-    }
-
-    spdlog::info("Database migrations completed. Current version: {}", targetVersion);
+    
+    spdlog::info("Database schema is up to date (version {})", MIGRATIONS.size());
 }
 
 } // namespace FamilyVault
-

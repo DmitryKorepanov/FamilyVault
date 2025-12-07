@@ -82,6 +82,7 @@ class NativeBridge {
   Pointer<Void>? _searchEngine;
   Pointer<Void>? _tagManager;
   Pointer<Void>? _duplicateFinder;
+  Pointer<Void>? _contentIndexer;
 
   // Database path (needed for background isolate operations)
   String? _databasePath;
@@ -117,7 +118,11 @@ class NativeBridge {
   late final _FvIndexGetByFolderCompact _fvIndexGetByFolderCompact;
   late final _FvIndexGetStats _fvIndexGetStats;
   late final _FvIndexSetFolderVisibility _fvIndexSetFolderVisibility;
+  late final _FvIndexSetFolderEnabled _fvIndexSetFolderEnabled;
   late final _FvIndexSetFileVisibility _fvIndexSetFileVisibility;
+  late final _FvIndexOptimizeDatabase _fvIndexOptimizeDatabase;
+  late final _FvIndexGetMaxTextSizeKB _fvIndexGetMaxTextSizeKB;
+  late final _FvIndexSetMaxTextSizeKB _fvIndexSetMaxTextSizeKB;
 
   // Search Engine
   late final _FvSearchCreate _fvSearchCreate;
@@ -144,6 +149,21 @@ class NativeBridge {
   late final _FvDuplicatesWithoutBackup _fvDuplicatesWithoutBackup;
   late final _FvDuplicatesDeleteFile _fvDuplicatesDeleteFile;
   late final _FvDuplicatesComputeChecksums _fvDuplicatesComputeChecksums;
+
+  // Content Indexer
+  late final _FvContentIndexerCreate _fvContentIndexerCreate;
+  late final _FvContentIndexerDestroy _fvContentIndexerDestroy;
+  late final _FvContentIndexerStart _fvContentIndexerStart;
+  late final _FvContentIndexerStop _fvContentIndexerStop;
+  late final _FvContentIndexerIsRunning _fvContentIndexerIsRunning;
+  late final _FvContentIndexerProcessFile _fvContentIndexerProcessFile;
+  late final _FvContentIndexerEnqueueUnprocessed _fvContentIndexerEnqueueUnprocessed;
+  late final _FvContentIndexerGetStatus _fvContentIndexerGetStatus;
+  late final _FvContentIndexerGetPendingCount _fvContentIndexerGetPendingCount;
+  late final _FvContentIndexerReindexAll _fvContentIndexerReindexAll;
+  late final _FvContentIndexerCanExtract _fvContentIndexerCanExtract;
+  late final _FvContentIndexerSetMaxTextSizeKB _fvContentIndexerSetMaxTextSizeKB;
+  late final _FvContentIndexerGetMaxTextSizeKB _fvContentIndexerGetMaxTextSizeKB;
 
   NativeBridge._() {
     _lib = _loadLibrary();
@@ -313,9 +333,29 @@ class NativeBridge {
             'fv_index_set_folder_visibility')
         .asFunction();
 
+    _fvIndexSetFolderEnabled = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>, Int64, Int32)>>(
+            'fv_index_set_folder_enabled')
+        .asFunction();
+
     _fvIndexSetFileVisibility = _lib
         .lookup<NativeFunction<Int32 Function(Pointer<Void>, Int64, Int32)>>(
             'fv_index_set_file_visibility')
+        .asFunction();
+
+    _fvIndexOptimizeDatabase = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>)>>(
+            'fv_index_optimize_database')
+        .asFunction();
+
+    _fvIndexGetMaxTextSizeKB = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>)>>(
+            'fv_index_get_max_text_size_kb')
+        .asFunction();
+
+    _fvIndexSetMaxTextSizeKB = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>, Int32)>>(
+            'fv_index_set_max_text_size_kb')
         .asFunction();
 
     // Search Engine
@@ -434,6 +474,76 @@ class NativeBridge {
                     Pointer<NativeFunction<ChecksumCallbackNative>>,
                     Pointer<Void>)>>('fv_duplicates_compute_checksums')
         .asFunction();
+
+    // Content Indexer
+    _fvContentIndexerCreate = _lib
+        .lookup<NativeFunction<Pointer<Void> Function(Pointer<Void>)>>(
+            'fv_content_indexer_create')
+        .asFunction();
+
+    _fvContentIndexerDestroy = _lib
+        .lookup<NativeFunction<Void Function(Pointer<Void>)>>(
+            'fv_content_indexer_destroy')
+        .asFunction();
+
+    _fvContentIndexerStart = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>)>>(
+            'fv_content_indexer_start')
+        .asFunction();
+
+    _fvContentIndexerStop = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>, Int32)>>(
+            'fv_content_indexer_stop')
+        .asFunction();
+
+    _fvContentIndexerIsRunning = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>)>>(
+            'fv_content_indexer_is_running')
+        .asFunction();
+
+    _fvContentIndexerProcessFile = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>, Int64)>>(
+            'fv_content_indexer_process_file')
+        .asFunction();
+
+    _fvContentIndexerEnqueueUnprocessed = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>)>>(
+            'fv_content_indexer_enqueue_unprocessed')
+        .asFunction();
+
+    _fvContentIndexerGetStatus = _lib
+        .lookup<NativeFunction<Pointer<Utf8> Function(Pointer<Void>)>>(
+            'fv_content_indexer_get_status')
+        .asFunction();
+
+    _fvContentIndexerGetPendingCount = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>)>>(
+            'fv_content_indexer_get_pending_count')
+        .asFunction();
+
+    _fvContentIndexerReindexAll = _lib
+        .lookup<
+            NativeFunction<
+                Int32 Function(
+                    Pointer<Void>,
+                    Pointer<NativeFunction<ContentProgressCallbackNative>>,
+                    Pointer<Void>)>>('fv_content_indexer_reindex_all')
+        .asFunction();
+
+    _fvContentIndexerCanExtract = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>, Pointer<Utf8>)>>(
+            'fv_content_indexer_can_extract')
+        .asFunction();
+
+    _fvContentIndexerSetMaxTextSizeKB = _lib
+        .lookup<NativeFunction<Void Function(Pointer<Void>, Int32)>>(
+            'fv_content_indexer_set_max_text_size_kb')
+        .asFunction();
+
+    _fvContentIndexerGetMaxTextSizeKB = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>)>>(
+            'fv_content_indexer_get_max_text_size_kb')
+        .asFunction();
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -527,6 +637,10 @@ class NativeBridge {
       // DuplicateFinder gets IndexManager reference for consistent deletion
       _duplicateFinder = _fvDuplicatesCreate(_database!, _indexManager!);
       if (_duplicateFinder == nullptr) _checkLastError('Failed to create duplicate finder');
+      
+      // ContentIndexer for text extraction
+      _contentIndexer = _fvContentIndexerCreate(_database!);
+      if (_contentIndexer == nullptr) _checkLastError('Failed to create content indexer');
     } finally {
       calloc.free(pathPtr);
       calloc.free(errorPtr);
@@ -580,6 +694,10 @@ class NativeBridge {
   void closeDatabase() {
     // Destroy managers first (in reverse order of creation)
     // Each manager automatically decrements database ref count
+    if (_contentIndexer != null) {
+      _fvContentIndexerDestroy(_contentIndexer!);
+      _contentIndexer = null;
+    }
     if (_duplicateFinder != null) {
       _fvDuplicatesDestroy(_duplicateFinder!);
       _duplicateFinder = null;
@@ -636,6 +754,26 @@ class NativeBridge {
     _ensureIndexManager();
     final error = _fvIndexRemoveFolder(_indexManager!, folderId);
     _checkError(error, 'Failed to remove folder');
+  }
+
+  /// Оптимизировать БД (rebuild FTS + VACUUM)
+  void optimizeDatabase() {
+    _ensureIndexManager();
+    final error = _fvIndexOptimizeDatabase(_indexManager!);
+    _checkError(error, 'Failed to optimize database');
+  }
+
+  /// Получить максимальный размер текста для индексации (KB)
+  int getMaxTextSizeKB() {
+    _ensureIndexManager();
+    return _fvIndexGetMaxTextSizeKB(_indexManager!);
+  }
+
+  /// Установить максимальный размер текста для индексации (KB)
+  void setMaxTextSizeKB(int sizeKB) {
+    _ensureIndexManager();
+    final error = _fvIndexSetMaxTextSizeKB(_indexManager!, sizeKB);
+    _checkError(error, 'Failed to set max text size');
   }
 
   /// Получить список папок
@@ -816,6 +954,13 @@ class NativeBridge {
     _ensureIndexManager();
     final error = _fvIndexSetFolderVisibility(_indexManager!, folderId, visibility);
     _checkError(error, 'Failed to set folder visibility');
+  }
+
+  /// Включить/отключить папку
+  void setFolderEnabled(int folderId, bool enabled) {
+    _ensureIndexManager();
+    final error = _fvIndexSetFolderEnabled(_indexManager!, folderId, enabled ? 1 : 0);
+    _checkError(error, 'Failed to set folder enabled');
   }
 
   /// Установить видимость файла
@@ -1089,6 +1234,140 @@ class NativeBridge {
       throw StateError('Database not initialized. Call initDatabase() first.');
     }
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // Content Indexer (Text Extraction)
+  // ═══════════════════════════════════════════════════════════
+
+  /// Запустить фоновое извлечение текста
+  void startContentIndexer() {
+    _ensureContentIndexer();
+    final error = _fvContentIndexerStart(_contentIndexer!);
+    _checkError(error, 'Failed to start content indexer');
+  }
+
+  /// Остановить извлечение текста
+  void stopContentIndexer({bool wait = true}) {
+    _ensureContentIndexer();
+    final error = _fvContentIndexerStop(_contentIndexer!, wait ? 1 : 0);
+    _checkError(error, 'Failed to stop content indexer');
+  }
+
+  /// Проверить, запущено ли извлечение
+  bool isContentIndexerRunning() {
+    _ensureContentIndexer();
+    return _fvContentIndexerIsRunning(_contentIndexer!) != 0;
+  }
+
+  /// Извлечь текст из конкретного файла (синхронно)
+  bool processFileContent(int fileId) {
+    _ensureContentIndexer();
+    final error = _fvContentIndexerProcessFile(_contentIndexer!, fileId);
+    return error == 0; // FV_OK
+  }
+
+  /// Добавить все необработанные файлы в очередь
+  int enqueueUnprocessedContent() {
+    _ensureContentIndexer();
+    final count = _fvContentIndexerEnqueueUnprocessed(_contentIndexer!);
+    if (count < 0) {
+      _checkLastError('Failed to enqueue unprocessed files');
+    }
+    return count;
+  }
+
+  /// Получить статус индексации контента
+  ContentIndexerStatus getContentIndexerStatus() {
+    _ensureContentIndexer();
+    final ptr = _fvContentIndexerGetStatus(_contentIndexer!);
+    final json = _readAndFreeJsonStringOrThrow(ptr, 'Failed to get content indexer status');
+    return ContentIndexerStatus.fromJson(jsonDecode(json) as Map<String, dynamic>);
+  }
+
+  /// Получить количество файлов без извлечённого текста
+  int getPendingContentCount() {
+    _ensureContentIndexer();
+    final count = _fvContentIndexerGetPendingCount(_contentIndexer!);
+    if (count < 0) {
+      _checkLastError('Failed to get pending content count');
+    }
+    return count;
+  }
+
+  /// Проверить, поддерживается ли MIME тип для извлечения
+  bool canExtractContent(String mimeType) {
+    _ensureContentIndexer();
+    final mimePtr = mimeType.toNativeUtf8();
+    try {
+      return _fvContentIndexerCanExtract(_contentIndexer!, mimePtr) != 0;
+    } finally {
+      calloc.free(mimePtr);
+    }
+  }
+
+  /// Получить максимальный размер текста для индексации (KB)
+  int getContentIndexerMaxTextSizeKB() {
+    _ensureContentIndexer();
+    return _fvContentIndexerGetMaxTextSizeKB(_contentIndexer!);
+  }
+
+  /// Установить максимальный размер текста для индексации (KB)
+  void setContentIndexerMaxTextSizeKB(int sizeKB) {
+    _ensureContentIndexer();
+    _fvContentIndexerSetMaxTextSizeKB(_contentIndexer!, sizeKB);
+  }
+
+  /// Переиндексировать весь контент (runs in background isolate)
+  Future<void> reindexAllContent({void Function(int processed, int total)? onProgress}) async {
+    _ensureContentIndexer();
+    
+    final dbPath = _databasePath;
+    if (dbPath == null) {
+      throw StateError('Database path not set');
+    }
+
+    final progressPort = ReceivePort();
+    final completer = Completer<void>();
+
+    progressPort.listen((message) {
+      if (message is Map) {
+        if (message['type'] == 'progress' && onProgress != null) {
+          onProgress(
+            message['processed'] as int,
+            message['total'] as int,
+          );
+        } else if (message['type'] == 'done') {
+          progressPort.close();
+          if (!completer.isCompleted) {
+            completer.complete();
+          }
+        } else if (message['type'] == 'error') {
+          progressPort.close();
+          if (!completer.isCompleted) {
+            completer.completeError(
+              NativeException(FVError.internal, message['message'] as String),
+            );
+          }
+        }
+      }
+    });
+
+    await Isolate.spawn(
+      _reindexContentIsolate,
+      _ReindexContentParams(
+        dbPath: dbPath,
+        progressPort: progressPort.sendPort,
+      ),
+    );
+
+    await completer.future;
+  }
+
+  void _ensureContentIndexer() {
+    if (_contentIndexer == null) {
+      throw StateError('Database not initialized. Call initDatabase() first.');
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1125,6 +1404,17 @@ class _ComputeChecksumsParams {
   final SendPort progressPort;
 
   _ComputeChecksumsParams({
+    required this.dbPath,
+    required this.progressPort,
+  });
+}
+
+/// Parameters for reindexContent isolate
+class _ReindexContentParams {
+  final String dbPath;
+  final SendPort progressPort;
+
+  _ReindexContentParams({
     required this.dbPath,
     required this.progressPort,
   });
@@ -1169,6 +1459,19 @@ void _scanProgressCallback(
 
 /// Static callback function for checksum progress
 void _checksumProgressCallback(int processed, int total, Pointer<Void> userData) {
+  final portId = userData.address;
+  final port = _getSendPort(portId);
+  if (port != null) {
+    port.send({
+      'type': 'progress',
+      'processed': processed,
+      'total': total,
+    });
+  }
+}
+
+/// Static callback function for content indexing progress
+void _contentProgressCallback(int processed, int total, Pointer<Void> userData) {
   final portId = userData.address;
   final port = _getSendPort(portId);
   if (port != null) {
@@ -1310,6 +1613,56 @@ void _computeChecksumsIsolate(_ComputeChecksumsParams params) {
   }
 }
 
+/// Isolate entry point for reindexing content
+void _reindexContentIsolate(_ReindexContentParams params) {
+  final portId = _registerSendPort(params.progressPort);
+  
+  try {
+    final bridge = NativeBridge._forIsolate();
+    bridge._initDatabaseSyncForWorker(params.dbPath);
+    
+    // Create content indexer in worker
+    bridge._contentIndexer = bridge._fvContentIndexerCreate(bridge._database!);
+    
+    final callback = NativeCallable<ContentProgressCallbackNative>.isolateLocal(
+      _contentProgressCallback,
+    );
+    
+    try {
+      final userDataPtr = Pointer<Void>.fromAddress(portId);
+      
+      final error = bridge._fvContentIndexerReindexAll(
+        bridge._contentIndexer!,
+        callback.nativeFunction,
+        userDataPtr,
+      );
+      
+      if (error != 0) {
+        params.progressPort.send({
+          'type': 'error',
+          'message': bridge.getErrorMessage(error),
+        });
+      } else {
+        params.progressPort.send({'type': 'done'});
+      }
+    } finally {
+      callback.close();
+      if (bridge._contentIndexer != null) {
+        bridge._fvContentIndexerDestroy(bridge._contentIndexer!);
+        bridge._contentIndexer = null;
+      }
+      bridge.closeDatabase();
+    }
+  } catch (e) {
+    params.progressPort.send({
+      'type': 'error',
+      'message': e.toString(),
+    });
+  } finally {
+    _unregisterSendPort(portId);
+  }
+}
+
 // ═══════════════════════════════════════════════════════════
 // Native function typedefs
 // ═══════════════════════════════════════════════════════════
@@ -1318,6 +1671,8 @@ void _computeChecksumsIsolate(_ComputeChecksumsParams params) {
 typedef ScanCallbackNative = Void Function(
     Int64 processed, Int64 total, Pointer<Utf8> currentFile, Pointer<Void> userData);
 typedef ChecksumCallbackNative = Void Function(
+    Int32 processed, Int32 total, Pointer<Void> userData);
+typedef ContentProgressCallbackNative = Void Function(
     Int32 processed, Int32 total, Pointer<Void> userData);
 
 // General
@@ -1356,8 +1711,13 @@ typedef _FvIndexGetByFolderCompact = Pointer<Utf8> Function(
 typedef _FvIndexGetStats = Pointer<Utf8> Function(Pointer<Void> mgr);
 typedef _FvIndexSetFolderVisibility = int Function(
     Pointer<Void> mgr, int folderId, int visibility);
+typedef _FvIndexSetFolderEnabled = int Function(
+    Pointer<Void> mgr, int folderId, int enabled);
 typedef _FvIndexSetFileVisibility = int Function(
     Pointer<Void> mgr, int fileId, int visibility);
+typedef _FvIndexOptimizeDatabase = int Function(Pointer<Void> mgr);
+typedef _FvIndexGetMaxTextSizeKB = int Function(Pointer<Void> mgr);
+typedef _FvIndexSetMaxTextSizeKB = int Function(Pointer<Void> mgr, int sizeKB);
 
 // Search Engine
 typedef _FvSearchCreate = Pointer<Void> Function(Pointer<Void> db);
@@ -1387,3 +1747,19 @@ typedef _FvDuplicatesWithoutBackup = Pointer<Utf8> Function(Pointer<Void> finder
 typedef _FvDuplicatesDeleteFile = int Function(Pointer<Void> finder, int fileId);
 typedef _FvDuplicatesComputeChecksums = int Function(Pointer<Void> finder,
     Pointer<NativeFunction<ChecksumCallbackNative>> cb, Pointer<Void> userData);
+
+// Content Indexer
+typedef _FvContentIndexerCreate = Pointer<Void> Function(Pointer<Void> db);
+typedef _FvContentIndexerDestroy = void Function(Pointer<Void> indexer);
+typedef _FvContentIndexerStart = int Function(Pointer<Void> indexer);
+typedef _FvContentIndexerStop = int Function(Pointer<Void> indexer, int wait);
+typedef _FvContentIndexerIsRunning = int Function(Pointer<Void> indexer);
+typedef _FvContentIndexerProcessFile = int Function(Pointer<Void> indexer, int fileId);
+typedef _FvContentIndexerEnqueueUnprocessed = int Function(Pointer<Void> indexer);
+typedef _FvContentIndexerGetStatus = Pointer<Utf8> Function(Pointer<Void> indexer);
+typedef _FvContentIndexerGetPendingCount = int Function(Pointer<Void> indexer);
+typedef _FvContentIndexerReindexAll = int Function(Pointer<Void> indexer,
+    Pointer<NativeFunction<ContentProgressCallbackNative>> cb, Pointer<Void> userData);
+typedef _FvContentIndexerCanExtract = int Function(Pointer<Void> indexer, Pointer<Utf8> mimeType);
+typedef _FvContentIndexerSetMaxTextSizeKB = void Function(Pointer<Void> indexer, int sizeKB);
+typedef _FvContentIndexerGetMaxTextSizeKB = int Function(Pointer<Void> indexer);

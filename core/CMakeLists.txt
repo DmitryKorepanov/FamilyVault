@@ -6,9 +6,14 @@ set(CORE_SOURCES
     src/Database/Migrations.cpp
     src/Index/IndexManager.cpp
     src/Index/FileScanner.cpp
+    src/Index/ContentIndexer.cpp
     src/Search/SearchEngine.cpp
     src/Tags/TagManager.cpp
     src/Duplicates/DuplicateFinder.cpp
+    src/TextExtractor/TextExtractorRegistry.cpp
+    src/TextExtractor/PlainTextExtractor.cpp
+    src/TextExtractor/PdfTextExtractor.cpp
+    src/TextExtractor/OfficeTextExtractor.cpp
     src/Utils/Types.cpp
     src/Utils/MimeTypeDetector.cpp
     src/ffi/familyvault_c.cpp
@@ -22,6 +27,12 @@ target_include_directories(familyvault
     PRIVATE src
 )
 
+# Find packages
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(POPPLER_CPP REQUIRED IMPORTED_TARGET poppler-cpp)
+find_package(libzip CONFIG REQUIRED)
+find_package(pugixml CONFIG REQUIRED)
+
 target_link_libraries(familyvault
     PRIVATE
         SQLite::SQLite3
@@ -29,6 +40,9 @@ target_link_libraries(familyvault
         OpenSSL::Crypto
         nlohmann_json::nlohmann_json
         spdlog::spdlog
+        PkgConfig::POPPLER_CPP
+        libzip::zip
+        pugixml::pugixml
 )
 
 # C++20 features
@@ -68,7 +82,16 @@ if(WIN32)
     # These are located in vcpkg_installed/x64-windows/bin/
     set(VCPKG_BIN_DIR "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/bin")
     
-    foreach(DLL_NAME sqlite3.dll spdlog.dll fmt.dll libcrypto-3-x64.dll libssl-3-x64.dll)
+    # Core dependencies + TextExtractor dependencies (poppler, libzip, pugixml)
+    set(REQUIRED_DLLS
+        sqlite3.dll spdlog.dll fmt.dll libcrypto-3-x64.dll libssl-3-x64.dll
+        poppler.dll poppler-cpp.dll pugixml.dll zip.dll
+        freetype.dll libpng16.dll bz2.dll zlib1.dll
+        brotlicommon.dll brotlidec.dll tiff.dll openjp2.dll
+        jpeg62.dll liblzma.dll iconv-2.dll charset-1.dll
+    )
+    
+    foreach(DLL_NAME ${REQUIRED_DLLS})
         set(DLL_PATH "${VCPKG_BIN_DIR}/${DLL_NAME}")
         if(EXISTS "${DLL_PATH}")
             add_custom_command(TARGET familyvault POST_BUILD

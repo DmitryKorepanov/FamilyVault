@@ -132,9 +132,18 @@ if(EXISTS "${FAMILYVAULT_DLL}")
     COMPONENT Runtime)
 endif()
 
-# Also copy runtime dependencies (spdlog, fmt, sqlite, openssl) if they exist
+# Also copy runtime dependencies if they exist
 # These are typically found next to familyvault.dll or in the vcpkg bin directory
-foreach(DEP_DLL spdlog.dll fmt.dll sqlite3.dll libcrypto-3-x64.dll libssl-3-x64.dll)
+set(RUNTIME_DLLS
+  # Core dependencies
+  spdlog.dll fmt.dll sqlite3.dll libcrypto-3-x64.dll libssl-3-x64.dll
+  # TextExtractor dependencies (poppler, libzip, pugixml)
+  poppler.dll poppler-cpp.dll pugixml.dll zip.dll
+  freetype.dll libpng16.dll bz2.dll zlib1.dll
+  brotlicommon.dll brotlidec.dll tiff.dll openjp2.dll
+  jpeg62.dll liblzma.dll iconv-2.dll charset-1.dll
+)
+foreach(DEP_DLL ${RUNTIME_DLLS})
   set(DEP_PATH "${CMAKE_CURRENT_SOURCE_DIR}/${DEP_DLL}")
   if(EXISTS "${DEP_PATH}")
     install(FILES "${DEP_PATH}"

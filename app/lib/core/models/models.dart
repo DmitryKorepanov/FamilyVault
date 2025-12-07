@@ -9,4 +9,5 @@ export 'search_result.dart';
 export 'tag.dart';
 export 'duplicate_group.dart';
 export 'index_stats.dart';
+export 'content_indexer_status.dart';
 

@@ -32,6 +32,11 @@ class IndexService {
     _bridge.setFolderVisibility(folderId, visibility.value);
   }
 
+  /// Включить/отключить папку
+  Future<void> setFolderEnabled(int folderId, bool enabled) async {
+    _bridge.setFolderEnabled(folderId, enabled);
+  }
+
   // ═══════════════════════════════════════════════════════════
   // Сканирование
   // ═══════════════════════════════════════════════════════════
@@ -79,4 +84,19 @@ class IndexService {
 
   /// Получить статистику индекса
   Future<IndexStats> getStats() async => _bridge.getStats();
+
+  // ═══════════════════════════════════════════════════════════
+  // Настройки и оптимизация
+  // ═══════════════════════════════════════════════════════════
+
+  /// Оптимизировать БД (rebuild FTS + VACUUM)
+  Future<void> optimizeDatabase() async {
+    _bridge.optimizeDatabase();
+  }
+
+  /// Получить максимальный размер текста для индексации (KB)
+  int getMaxTextSizeKB() => _bridge.getMaxTextSizeKB();
+
+  /// Установить максимальный размер текста для индексации (KB)
+  void setMaxTextSizeKB(int sizeKB) => _bridge.setMaxTextSizeKB(sizeKB);
 }

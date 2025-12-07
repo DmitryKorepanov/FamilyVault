@@ -38,6 +38,11 @@ final duplicateServiceProvider = Provider<DuplicateService>((ref) {
   return DuplicateService(bridge: ref.watch(nativeBridgeProvider));
 });
 
+/// Провайдер ContentIndexerService
+final contentIndexerServiceProvider = Provider<ContentIndexerService>((ref) {
+  return ContentIndexerService(ref.watch(nativeBridgeProvider));
+});
+
 // ═══════════════════════════════════════════════════════════
 // Инициализация
 // ═══════════════════════════════════════════════════════════
@@ -46,6 +51,14 @@ final duplicateServiceProvider = Provider<DuplicateService>((ref) {
 final appInitializedProvider = FutureProvider<bool>((ref) async {
   final db = ref.watch(databaseServiceProvider);
   await db.initialize();
+  
+  // Resume text extraction for any pending files (e.g. after app restart)
+  final contentIndexer = ref.read(contentIndexerServiceProvider);
+  final pending = contentIndexer.enqueueUnprocessed();
+  if (pending > 0) {
+    contentIndexer.start();
+  }
+  
   return true;
 });
 
@@ -121,12 +134,21 @@ class FoldersNotifier extends AsyncNotifier<List<WatchedFolder>> {
     Visibility visibility = Visibility.family,
     bool autoScan = true,
   }) async {
+    // Get services BEFORE invalidating providers
+    final contentIndexer = ref.read(contentIndexerServiceProvider);
+    
     state = const AsyncLoading();
     try {
       final folderId = await _service.addFolder(path, name: name, visibility: visibility);
 
       if (autoScan && folderId > 0) {
         await _service.scanFolder(folderId);
+        
+        // Auto-extract text from new files (before invalidate!)
+        final pending = contentIndexer.enqueueUnprocessed();
+        if (pending > 0) {
+          contentIndexer.start();
+        }
       }
 
       // Одна строка — все зависимые провайдеры обновятся автоматически
@@ -140,6 +162,10 @@ class FoldersNotifier extends AsyncNotifier<List<WatchedFolder>> {
 
   /// Удалить папку из отслеживания
   Future<void> removeFolder(int folderId) async {
+    // Stop background text extraction before deleting
+    final contentIndexer = ref.read(contentIndexerServiceProvider);
+    contentIndexer.stop();
+    
     state = const AsyncLoading();
     try {
       await _service.removeFolder(folderId);
@@ -163,22 +189,43 @@ class FoldersNotifier extends AsyncNotifier<List<WatchedFolder>> {
 
   /// Сканировать одну папку
   Future<void> scanFolder(int folderId) async {
-    ref.read(scanningFolderIdProvider.notifier).state = folderId;
+    // Get services BEFORE invalidating providers
+    final scanningNotifier = ref.read(scanningFolderIdProvider.notifier);
+    final contentIndexer = ref.read(contentIndexerServiceProvider);
+    
+    scanningNotifier.state = folderId;
     try {
       await _service.scanFolder(folderId);
+      
+      // Auto-extract text from new files (before invalidate!)
+      final pending = contentIndexer.enqueueUnprocessed();
+      if (pending > 0) {
+        contentIndexer.start();
+      }
+      
       _incrementIndexVersion(ref);
       state = AsyncData(await _service.getFolders());
     } catch (e, st) {
       state = AsyncError(e, st);
     } finally {
-      ref.read(scanningFolderIdProvider.notifier).state = null;
+      scanningNotifier.state = null;
     }
   }
 
   /// Сканировать все папки
   Future<void> scanAll() async {
+    // Get services BEFORE invalidating providers
+    final contentIndexer = ref.read(contentIndexerServiceProvider);
+    
     try {
       await _service.scanAll();
+      
+      // Auto-extract text from new files (before invalidate!)
+      final pending = contentIndexer.enqueueUnprocessed();
+      if (pending > 0) {
+        contentIndexer.start();
+      }
+      
       _incrementIndexVersion(ref);
       state = AsyncData(await _service.getFolders());
     } catch (e, st) {
@@ -339,4 +386,25 @@ final scanProgressProvider = StateProvider<ScanProgress?>((ref) => null);
 /// Идёт ли сканирование
 final isScanningProvider = Provider<bool>((ref) {
   return ref.watch(scanProgressProvider) != null;
+});
+
+// ═══════════════════════════════════════════════════════════
+// Извлечение текста (Content Indexer)
+// ═══════════════════════════════════════════════════════════
+
+/// Количество файлов без извлечённого текста (автообновление каждые 2 сек)
+final pendingContentCountProvider = StreamProvider<int>((ref) async* {
+  await ref.watch(appInitializedProvider.future);
+  final service = ref.read(contentIndexerServiceProvider);
+  
+  while (true) {
+    yield service.pendingCount;
+    await Future.delayed(const Duration(seconds: 2));
+  }
+});
+
+/// Идёт ли извлечение текста
+final isContentIndexingProvider = Provider<bool>((ref) {
+  final service = ref.watch(contentIndexerServiceProvider);
+  return service.isRunning;
 });

@@ -89,6 +89,18 @@ class SettingsScreen extends ConsumerWidget {
 
           const Divider(),
 
+          // Optimization section
+          _SectionHeader(title: 'Index'),
+          _MaxTextSizeTile(),
+          _SettingsTile(
+            icon: Icons.refresh,
+            title: 'Rebuild Index',
+            subtitle: 'Re-index all folders with current settings',
+            onTap: () => _rebuildIndex(context, ref),
+          ),
+
+          const Divider(),
+
           // About section
           _SectionHeader(title: 'Help'),
           _SettingsTile(
@@ -199,6 +211,246 @@ class SettingsScreen extends ConsumerWidget {
         const SnackBar(content: Text('Cache cleared')),
       );
     }
+  }
+
+  Future<void> _rebuildIndex(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rebuild Index'),
+        content: const Text(
+          'This will delete the current database and re-index all folders '
+          'with the current Max Text Size setting.\n\n'
+          'This may take several minutes for large libraries.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Rebuild'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && context.mounted) {
+      try {
+        // Get current folders with ALL metadata before deleting
+        final indexService = ref.read(indexServiceProvider);
+        final folders = await indexService.getFolders();
+        
+        if (folders.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No folders to rebuild')),
+          );
+          return;
+        }
+        
+        // Store folder metadata (path, name, visibility, enabled)
+        final folderData = folders.map((f) => (
+          path: f.path,
+          name: f.name,
+          visibility: f.defaultVisibility,
+          enabled: f.enabled,
+        )).toList();
+        
+        // Show progress dialog
+        if (context.mounted) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => const AlertDialog(
+              content: Row(
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(width: 24),
+                  Text('Rebuilding index...'),
+                ],
+              ),
+            ),
+          );
+        }
+        
+        // Rebuild database
+        final dbService = ref.read(databaseServiceProvider);
+        await dbService.rebuildDatabase();
+        
+        // Re-add folders with original metadata and scan
+        final foldersNotifier = ref.read(foldersNotifierProvider.notifier);
+        
+        for (final folder in folderData) {
+          // Only scan if folder was enabled
+          await foldersNotifier.addFolder(
+            folder.path,
+            name: folder.name,
+            visibility: folder.visibility,
+            autoScan: folder.enabled, // Don't scan disabled folders
+          );
+        }
+        
+        // Restore enabled state for disabled folders
+        final newFolders = await indexService.getFolders();
+        for (final folder in folderData) {
+          if (!folder.enabled) {
+            // Find the newly added folder by path and disable it
+            final newFolder = newFolders.where((f) => f.path == folder.path).firstOrNull;
+            if (newFolder != null) {
+              await indexService.setFolderEnabled(newFolder.id, false);
+            }
+          }
+        }
+        
+        // Invalidate providers to refresh UI
+        ref.invalidate(indexStatsProvider);
+        ref.invalidate(foldersNotifierProvider);
+        
+        if (context.mounted) {
+          Navigator.pop(context); // Close progress dialog
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Rebuilt index for ${folderData.length} folders')),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          Navigator.pop(context); // Close progress dialog if open
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Rebuild failed: $e')),
+          );
+        }
+      }
+    }
+  }
+}
+
+/// Настройка размера индексируемого текста
+class _MaxTextSizeTile extends ConsumerStatefulWidget {
+  const _MaxTextSizeTile();
+
+  @override
+  ConsumerState<_MaxTextSizeTile> createState() => _MaxTextSizeTileState();
+}
+
+class _MaxTextSizeTileState extends ConsumerState<_MaxTextSizeTile> {
+  int _currentValue = 100;
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadValue();
+  }
+
+  void _loadValue() {
+    final indexService = ref.read(indexServiceProvider);
+    setState(() {
+      _currentValue = indexService.getMaxTextSizeKB();
+      _loaded = true;
+    });
+  }
+
+  void _showSizeDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => _MaxTextSizeDialog(
+        currentValue: _currentValue,
+        onChanged: (value) {
+          final indexService = ref.read(indexServiceProvider);
+          indexService.setMaxTextSizeKB(value);
+          // Also update ContentIndexer
+          final contentIndexer = ref.read(contentIndexerServiceProvider);
+          contentIndexer.setMaxTextSizeKB(value);
+          setState(() {
+            _currentValue = value;
+          });
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SettingsTile(
+      icon: Icons.text_fields,
+      title: 'Max Text Size',
+      subtitle: _loaded ? '$_currentValue KB per file' : 'Loading...',
+      onTap: _loaded ? _showSizeDialog : null,
+    );
+  }
+}
+
+class _MaxTextSizeDialog extends StatefulWidget {
+  final int currentValue;
+  final ValueChanged<int> onChanged;
+
+  const _MaxTextSizeDialog({
+    required this.currentValue,
+    required this.onChanged,
+  });
+
+  @override
+  State<_MaxTextSizeDialog> createState() => _MaxTextSizeDialogState();
+}
+
+class _MaxTextSizeDialogState extends State<_MaxTextSizeDialog> {
+  late int _selectedValue;
+
+  static const _options = [10, 50, 100, 200, 500];
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedValue = widget.currentValue;
+    // Ensure selected value is in options
+    if (!_options.contains(_selectedValue)) {
+      _selectedValue = 100;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SimpleDialog(
+      title: const Text('Max Text Size'),
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Text(
+            'Maximum text to extract from each document for full-text search.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+        const SizedBox(height: 8),
+        ..._options.map((value) => RadioListTile<int>(
+          value: value,
+          groupValue: _selectedValue,
+          title: Text('$value KB'),
+          subtitle: Text(_getDescription(value)),
+          onChanged: (v) {
+            if (v != null) {
+              setState(() => _selectedValue = v);
+              widget.onChanged(v);
+              Navigator.pop(context);
+            }
+          },
+        )),
+      ],
+    );
+  }
+
+  String _getDescription(int value) {
+    return switch (value) {
+      10 => 'Minimal (fast)',
+      50 => 'Basic search',
+      100 => 'Recommended',
+      200 => 'Extended',
+      500 => 'Full documents',
+      _ => '',
+    };
   }
 }
 

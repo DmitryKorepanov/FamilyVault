@@ -274,15 +274,16 @@ class _FilterChip extends StatelessWidget {
 // Stats Bar
 // ═══════════════════════════════════════════════════════════
 
-class _StatsBar extends StatelessWidget {
+class _StatsBar extends ConsumerWidget {
   final IndexStats stats;
 
   const _StatsBar({required this.stats});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final pendingContent = ref.watch(pendingContentCountProvider);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -325,6 +326,36 @@ class _StatsBar extends StatelessWidget {
             style: theme.textTheme.bodySmall?.copyWith(
               color: colorScheme.outline,
             ),
+          ),
+          
+          // Text extraction progress indicator
+          pendingContent.when(
+            data: (pending) {
+              if (pending == 0) return const SizedBox.shrink();
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(width: 16),
+                  SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Indexing: $pending',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.primary,
+                    ),
+                  ),
+                ],
+              );
+            },
+            loading: () => const SizedBox.shrink(),
+            error: (_, __) => const SizedBox.shrink(),
           ),
         ],
       ),
