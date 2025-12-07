@@ -1,0 +1,11 @@
+name: familyvault_tools
+description: Build and development tools for FamilyVault
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  path: ^1.8.0
+

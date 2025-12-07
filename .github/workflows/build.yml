@@ -1,0 +1,117 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-core-windows:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup vcpkg
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgGitCommitId: 'a34c873a9717a888f58dc05268dea15592c2f0ff'
+        
+    - name: Configure CMake
+      run: cmake --preset windows-x64
+      
+    - name: Build
+      run: cmake --build --preset windows-x64-release
+      
+    - name: Upload DLL
+      uses: actions/upload-artifact@v4
+      with:
+        name: core-windows
+        path: build/windows-x64/familyvault.dll
+
+  build-flutter-windows:
+    needs: build-core-windows
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Download Core DLL
+      uses: actions/download-artifact@v4
+      with:
+        name: core-windows
+        path: app/windows/
+    
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.16.0'
+        channel: 'stable'
+        
+    - name: Install dependencies
+      run: |
+        cd app
+        flutter pub get
+        
+    - name: Build Windows
+      run: |
+        cd app
+        flutter build windows --release
+        
+    - name: Upload Windows build
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-release
+        path: app/build/windows/x64/runner/Release/
+
+  build-flutter-android:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+    
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.16.0'
+        channel: 'stable'
+        
+    - name: Install dependencies
+      run: |
+        cd app
+        flutter pub get
+        
+    - name: Build APK
+      run: |
+        cd app
+        flutter build apk --release
+        
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-release
+        path: app/build/app/outputs/flutter-apk/app-release.apk
+
+  test-core:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup vcpkg
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgGitCommitId: 'a34c873a9717a888f58dc05268dea15592c2f0ff'
+        
+    - name: Configure CMake
+      run: cmake --preset windows-x64
+      
+    - name: Build with tests
+      run: cmake --build --preset windows-x64-release
+      
+    - name: Run tests
+      run: ctest --test-dir build/windows-x64 --output-on-failure
+

@@ -1,0 +1,14 @@
+{
+  "name": "familyvault",
+  "version": "0.1.0",
+  "dependencies": [
+    {
+      "name": "sqlite3",
+      "features": ["fts5"]
+    },
+    "openssl",
+    "nlohmann-json",
+    "spdlog",
+    "gtest"
+  ]
+}
