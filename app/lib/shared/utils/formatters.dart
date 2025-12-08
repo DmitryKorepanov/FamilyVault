@@ -87,6 +87,23 @@ String formatNumber(int number) {
   return NumberFormat.decimalPattern().format(number);
 }
 
+/// Компактное форматирование числа (1.2K, 3.5M)
+String formatCompactNumber(int number) {
+  if (number < 1000) {
+    return number.toString();
+  } else if (number < 1000000) {
+    final value = number / 1000;
+    return value >= 10 
+        ? '${value.round()}K' 
+        : '${value.toStringAsFixed(1)}K';
+  } else {
+    final value = number / 1000000;
+    return value >= 10 
+        ? '${value.round()}M' 
+        : '${value.toStringAsFixed(1)}M';
+  }
+}
+
 /// Форматирование процента
 String formatPercent(double value) {
   return '${(value * 100).toStringAsFixed(1)}%';

@@ -144,11 +144,9 @@ class FoldersNotifier extends AsyncNotifier<List<WatchedFolder>> {
       if (autoScan && folderId > 0) {
         await _service.scanFolder(folderId);
         
-        // Auto-extract text from new files (before invalidate!)
-        final pending = contentIndexer.enqueueUnprocessed();
-        if (pending > 0) {
-          contentIndexer.start();
-        }
+        // Restart content indexer (will process any pending + new files)
+        contentIndexer.enqueueUnprocessed();
+        contentIndexer.start();
       }
 
       // Одна строка — все зависимые провайдеры обновятся автоматически
@@ -169,6 +167,11 @@ class FoldersNotifier extends AsyncNotifier<List<WatchedFolder>> {
     state = const AsyncLoading();
     try {
       await _service.removeFolder(folderId);
+      
+      // Restart content indexer for remaining files
+      contentIndexer.enqueueUnprocessed();
+      contentIndexer.start();
+      
       _incrementIndexVersion(ref);
       state = AsyncData(await _service.getFolders());
     } catch (e, st) {
@@ -189,19 +192,26 @@ class FoldersNotifier extends AsyncNotifier<List<WatchedFolder>> {
 
   /// Сканировать одну папку
   Future<void> scanFolder(int folderId) async {
+    // Защита от параллельных сканирований
+    final currentScanning = ref.read(scanningFolderIdProvider);
+    if (currentScanning != null) {
+      return; // Уже идёт сканирование
+    }
+    
     // Get services BEFORE invalidating providers
     final scanningNotifier = ref.read(scanningFolderIdProvider.notifier);
     final contentIndexer = ref.read(contentIndexerServiceProvider);
+    
+    // Остановить ContentIndexer чтобы избежать блокировки БД
+    contentIndexer.stop();
     
     scanningNotifier.state = folderId;
     try {
       await _service.scanFolder(folderId);
       
-      // Auto-extract text from new files (before invalidate!)
-      final pending = contentIndexer.enqueueUnprocessed();
-      if (pending > 0) {
-        contentIndexer.start();
-      }
+      // Restart content indexer (will process any pending + new files)
+      contentIndexer.enqueueUnprocessed();
+      contentIndexer.start();
       
       _incrementIndexVersion(ref);
       state = AsyncData(await _service.getFolders());
@@ -214,22 +224,34 @@ class FoldersNotifier extends AsyncNotifier<List<WatchedFolder>> {
 
   /// Сканировать все папки
   Future<void> scanAll() async {
+    // Защита от параллельных сканирований
+    final currentScanning = ref.read(scanningFolderIdProvider);
+    if (currentScanning != null) {
+      return; // Уже идёт сканирование
+    }
+    
     // Get services BEFORE invalidating providers
+    final scanningNotifier = ref.read(scanningFolderIdProvider.notifier);
     final contentIndexer = ref.read(contentIndexerServiceProvider);
     
+    // Остановить ContentIndexer чтобы избежать блокировки БД
+    contentIndexer.stop();
+    
+    // Используем специальный ID -1 для обозначения "сканируем все"
+    scanningNotifier.state = -1;
     try {
       await _service.scanAll();
       
-      // Auto-extract text from new files (before invalidate!)
-      final pending = contentIndexer.enqueueUnprocessed();
-      if (pending > 0) {
-        contentIndexer.start();
-      }
+      // Restart content indexer (will process any pending + new files)
+      contentIndexer.enqueueUnprocessed();
+      contentIndexer.start();
       
       _incrementIndexVersion(ref);
       state = AsyncData(await _service.getFolders());
     } catch (e, st) {
       state = AsyncError(e, st);
+    } finally {
+      scanningNotifier.state = null;
     }
   }
 
@@ -385,7 +407,7 @@ final scanProgressProvider = StateProvider<ScanProgress?>((ref) => null);
 
 /// Идёт ли сканирование
 final isScanningProvider = Provider<bool>((ref) {
-  return ref.watch(scanProgressProvider) != null;
+  return ref.watch(scanningFolderIdProvider) != null;
 });
 
 // ═══════════════════════════════════════════════════════════

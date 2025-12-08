@@ -45,7 +45,8 @@ SearchQueryBuilt SearchEngine::buildSearchQuery(const SearchQuery& query, bool c
         sql << "SELECT COUNT(*) ";
     } else {
         sql << R"(
-            SELECT f.id, f.folder_id, f.relative_path, f.name, f.extension, f.size,
+            SELECT f.id, f.folder_id, f.relative_path, wf.path as folder_path, 
+                   f.name, f.extension, f.size,
                    f.mime_type, f.content_type, f.checksum, f.created_at, f.modified_at,
                    f.indexed_at, COALESCE(f.visibility, wf.visibility) as visibility,
                    f.source_device_id, f.is_remote, f.sync_version, f.last_modified_by
@@ -337,19 +338,21 @@ SearchResult SearchEngine::mapSearchResult(sqlite3_stmt* stmt) {
 SearchResultCompact SearchEngine::mapSearchResultCompact(sqlite3_stmt* stmt) {
     SearchResultCompact r;
     r.file.id = Database::getInt64(stmt, 0);
-    // Skip columns 1-2 (folder_id, relative_path)
-    r.file.name = Database::getString(stmt, 3);
-    r.file.extension = Database::getString(stmt, 4);
-    r.file.size = Database::getInt64(stmt, 5);
-    // Skip column 6 (mime_type)
-    r.file.contentType = static_cast<ContentType>(Database::getInt(stmt, 7));
-    // Skip columns 8-9 (checksum, created_at)
-    r.file.modifiedAt = Database::getInt64(stmt, 10);
-    // Skip columns 11-13 (indexed_at, visibility, source_device_id)
-    r.file.isRemote = Database::getInt(stmt, 14) != 0;
-    // Skip columns 15-16 (sync_version, last_modified_by)
-    r.score = Database::getDouble(stmt, 17);
-    r.file.hasThumbnail = false; // TODO: check thumbnail cache
+    r.file.folderId = Database::getInt64(stmt, 1);
+    r.file.relativePath = Database::getString(stmt, 2);
+    r.file.folderPath = Database::getString(stmt, 3);
+    r.file.name = Database::getString(stmt, 4);
+    r.file.extension = Database::getString(stmt, 5);
+    r.file.size = Database::getInt64(stmt, 6);
+    // Skip column 7 (mime_type)
+    r.file.contentType = static_cast<ContentType>(Database::getInt(stmt, 8));
+    // Skip columns 9-10 (checksum, created_at)
+    r.file.modifiedAt = Database::getInt64(stmt, 11);
+    // Skip columns 12-14 (indexed_at, visibility, source_device_id)
+    r.file.isRemote = Database::getInt(stmt, 15) != 0;
+    // Skip columns 16-17 (sync_version, last_modified_by)
+    r.score = Database::getDouble(stmt, 18);
+    r.file.hasThumbnail = r.file.contentType == ContentType::Image;
     return r;
 }
 
@@ -358,20 +361,21 @@ FileRecord SearchEngine::mapFileRecord(sqlite3_stmt* stmt) {
     r.id = Database::getInt64(stmt, 0);
     r.folderId = Database::getInt64(stmt, 1);
     r.relativePath = Database::getString(stmt, 2);
-    r.name = Database::getString(stmt, 3);
-    r.extension = Database::getString(stmt, 4);
-    r.size = Database::getInt64(stmt, 5);
-    r.mimeType = Database::getString(stmt, 6);
-    r.contentType = static_cast<ContentType>(Database::getInt(stmt, 7));
-    r.checksum = Database::getStringOpt(stmt, 8);
-    r.createdAt = Database::getInt64(stmt, 9);
-    r.modifiedAt = Database::getInt64(stmt, 10);
-    r.indexedAt = Database::getInt64(stmt, 11);
-    r.visibility = static_cast<Visibility>(Database::getInt(stmt, 12));
-    r.sourceDeviceId = Database::getStringOpt(stmt, 13);
-    r.isRemote = Database::getInt(stmt, 14) != 0;
-    r.syncVersion = Database::getInt64(stmt, 15);
-    r.lastModifiedBy = Database::getStringOpt(stmt, 16);
+    // Skip column 3 (folder_path - not in FileRecord)
+    r.name = Database::getString(stmt, 4);
+    r.extension = Database::getString(stmt, 5);
+    r.size = Database::getInt64(stmt, 6);
+    r.mimeType = Database::getString(stmt, 7);
+    r.contentType = static_cast<ContentType>(Database::getInt(stmt, 8));
+    r.checksum = Database::getStringOpt(stmt, 9);
+    r.createdAt = Database::getInt64(stmt, 10);
+    r.modifiedAt = Database::getInt64(stmt, 11);
+    r.indexedAt = Database::getInt64(stmt, 12);
+    r.visibility = static_cast<Visibility>(Database::getInt(stmt, 13));
+    r.sourceDeviceId = Database::getStringOpt(stmt, 14);
+    r.isRemote = Database::getInt(stmt, 15) != 0;
+    r.syncVersion = Database::getInt64(stmt, 16);
+    r.lastModifiedBy = Database::getStringOpt(stmt, 17);
     return r;
 }
 

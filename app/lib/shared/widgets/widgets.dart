@@ -9,4 +9,7 @@ export 'file_grid.dart';
 export 'file_list.dart';
 export 'stats_card.dart';
 export 'adaptive_scaffold.dart';
+export 'index_status_bar.dart';
+export 'file_details_panel.dart';
+export 'file_thumbnail.dart';
 

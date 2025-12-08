@@ -164,6 +164,9 @@ static json fileRecordToJson(const FileRecord& f) {
 static json fileRecordCompactToJson(const FileRecordCompact& f) {
     return {
         {"id", f.id},
+        {"folderId", f.folderId},
+        {"relativePath", f.relativePath},
+        {"folderPath", f.folderPath},
         {"name", f.name},
         {"extension", f.extension},
         {"size", f.size},

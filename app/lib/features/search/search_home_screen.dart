@@ -1,11 +1,21 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../../core/models/models.dart';
 import '../../core/providers/providers.dart';
 import '../../shared/utils/formatters.dart';
 import '../../shared/utils/file_icons.dart';
+import '../../shared/widgets/index_status_bar.dart';
+import '../../shared/widgets/file_details_panel.dart';
+import '../../shared/widgets/file_thumbnail.dart';
+import '../../theme/app_theme.dart';
+
+/// Провайдер для выбранного файла (для панели деталей)
+final selectedFileIdProvider = StateProvider<int?>((ref) => null);
 
 /// Главный экран приложения — поиск с фильтрами
 class SearchHomeScreen extends ConsumerStatefulWidget {
@@ -31,10 +41,13 @@ class _SearchHomeScreenState extends ConsumerState<SearchHomeScreen> {
     final query = ref.watch(searchQueryProvider);
     final results = ref.watch(searchResultsProvider);
     final stats = ref.watch(indexStatsProvider);
+    final selectedFileId = ref.watch(selectedFileIdProvider);
+    final isDesktop = AppSizes.isDesktop(context);
 
     return Scaffold(
       drawer: const _AppDrawer(),
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
             // Header with search
@@ -42,12 +55,13 @@ class _SearchHomeScreenState extends ConsumerState<SearchHomeScreen> {
               controller: _searchController,
               focusNode: _focusNode,
               onChanged: (text) {
-                ref.read(searchQueryProvider.notifier).state = 
+                ref.read(searchQueryProvider.notifier).state =
                     query.copyWith(text: text);
               },
               onClear: () {
                 _searchController.clear();
-                ref.read(searchQueryProvider.notifier).state = const SearchQuery();
+                ref.read(searchQueryProvider.notifier).state =
+                    const SearchQuery();
               },
             ),
 
@@ -57,43 +71,135 @@ class _SearchHomeScreenState extends ConsumerState<SearchHomeScreen> {
               onTypeSelected: (type) {
                 if (query.contentType == type) {
                   // Deselect
-                  ref.read(searchQueryProvider.notifier).state = 
+                  ref.read(searchQueryProvider.notifier).state =
                       query.copyWith(clearContentType: true);
                 } else {
-                  ref.read(searchQueryProvider.notifier).state = 
+                  ref.read(searchQueryProvider.notifier).state =
                       query.copyWith(contentType: type);
                 }
               },
             ),
 
-            // Stats bar
-            stats.when(
-              data: (s) => _StatsBar(stats: s),
-              loading: () => const SizedBox(height: 32),
-              error: (_, __) => const SizedBox(height: 32),
-            ),
-
-            // Results
+            // Main content area with optional side panel
             Expanded(
-              child: results.when(
-                data: (files) {
-                  if (files.isEmpty) {
-                    return _EmptyResults(hasQuery: !query.isEmpty);
-                  }
-                  return _ResultsGrid(files: files);
-                },
-                loading: () => const Center(
-                  child: CircularProgressIndicator(),
-                ),
-                error: (e, _) => Center(
-                  child: Text('Error: $e'),
-                ),
+              child: Row(
+                children: [
+                  // Results area
+                  Expanded(
+                    child: results.when(
+                      data: (files) {
+                        final hasFolders = stats.valueOrNull?.totalFolders ?? 0;
+                        if (files.isEmpty && hasFolders == 0) {
+                          return _EmptyWelcome(
+                            onAddFolder: () => _addFolder(context, ref),
+                          );
+                        }
+                        if (files.isEmpty) {
+                          return _EmptyResults(hasQuery: !query.isEmpty);
+                        }
+                        return _ResultsGrid(
+                          files: files,
+                          selectedFileId: selectedFileId,
+                          onFileSelected: (file) {
+                            if (isDesktop) {
+                              // На desktop показываем панель сбоку
+                              ref.read(selectedFileIdProvider.notifier).state =
+                                  file.id;
+                            } else {
+                              // На mobile показываем bottom sheet
+                              showFileDetailsSheet(context, file.id);
+                            }
+                          },
+                        );
+                      },
+                      loading: () => const Center(
+                        child: CircularProgressIndicator(),
+                      ),
+                      error: (e, _) => Center(
+                        child: Text('Error: $e'),
+                      ),
+                    ),
+                  ),
+
+                  // Details panel (desktop only)
+                  if (isDesktop && selectedFileId != null)
+                    SizedBox(
+                      width: 340,
+                      child: FileDetailsPanel(
+                        fileId: selectedFileId,
+                        onClose: () {
+                          ref.read(selectedFileIdProvider.notifier).state =
+                              null;
+                        },
+                      ),
+                    ),
+                ],
               ),
             ),
+
+            // Status bar
+            const IndexStatusBar(),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _addFolder(BuildContext context, WidgetRef ref) async {
+    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+      final result = await FilePicker.platform.getDirectoryPath();
+      if (result != null) {
+        final folderName = result.split(RegExp(r'[/\\]')).last;
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text('Adding $folderName...'),
+                ],
+              ),
+              duration: const Duration(seconds: 10),
+            ),
+          );
+        }
+
+        await ref.read(foldersNotifierProvider.notifier).addFolder(result);
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.white),
+                  const SizedBox(width: 12),
+                  Text('$folderName added successfully!'),
+                ],
+              ),
+              backgroundColor: Colors.green.shade600,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } else {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Folder picker not available on mobile yet')),
+        );
+      }
+    }
   }
 }
 
@@ -131,7 +237,7 @@ class _SearchHeader extends StatelessWidget {
               tooltip: 'Menu',
             ),
           ),
-          
+
           // Search field
           Expanded(
             child: Container(
@@ -271,93 +377,88 @@ class _FilterChip extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════
-// Stats Bar
+// Empty Welcome (no folders yet)
 // ═══════════════════════════════════════════════════════════
 
-class _StatsBar extends ConsumerWidget {
-  final IndexStats stats;
+class _EmptyWelcome extends StatelessWidget {
+  final VoidCallback onAddFolder;
 
-  const _StatsBar({required this.stats});
+  const _EmptyWelcome({required this.onAddFolder});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final pendingContent = ref.watch(pendingContentCountProvider);
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          Icon(
-            Icons.folder,
-            size: 16,
-            color: colorScheme.outline,
-          ),
-          const SizedBox(width: 4),
-          Text(
-            '${stats.totalFolders} folders',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.outline,
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Animated icon
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0.8, end: 1.0),
+              duration: const Duration(milliseconds: 800),
+              curve: Curves.easeOutBack,
+              builder: (context, value, child) {
+                return Transform.scale(
+                  scale: value,
+                  child: child,
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer.withValues(alpha: 0.5),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.folder_special,
+                  size: 72,
+                  color: colorScheme.primary,
+                ),
+              ),
             ),
-          ),
-          const SizedBox(width: 16),
-          Icon(
-            Icons.insert_drive_file,
-            size: 16,
-            color: colorScheme.outline,
-          ),
-          const SizedBox(width: 4),
-          Text(
-            '${stats.totalFiles} files',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.outline,
+            const SizedBox(height: 32),
+            Text(
+              'Welcome to FamilyVault',
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
             ),
-          ),
-          const SizedBox(width: 16),
-          Icon(
-            Icons.storage,
-            size: 16,
-            color: colorScheme.outline,
-          ),
-          const SizedBox(width: 4),
-          Text(
-            formatFileSize(stats.totalSize),
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.outline,
+            const SizedBox(height: 12),
+            Text(
+              'Add your first folder to start organizing\nand searching your files',
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: colorScheme.outline,
+              ),
+              textAlign: TextAlign.center,
             ),
-          ),
-          
-          // Text extraction progress indicator
-          pendingContent.when(
-            data: (pending) {
-              if (pending == 0) return const SizedBox.shrink();
-              return Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox(width: 16),
-                  SizedBox(
-                    width: 12,
-                    height: 12,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Indexing: $pending',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colorScheme.primary,
-                    ),
-                  ),
-                ],
-              );
-            },
-            loading: () => const SizedBox.shrink(),
-            error: (_, __) => const SizedBox.shrink(),
-          ),
-        ],
+            const SizedBox(height: 32),
+            FilledButton.icon(
+              onPressed: onAddFolder,
+              icon: const Icon(Icons.create_new_folder),
+              label: const Text('Add Your First Folder'),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 16,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: () {
+                Scaffold.of(context).openDrawer();
+              },
+              child: Text(
+                'Or explore the menu',
+                style: TextStyle(color: colorScheme.outline),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -397,21 +498,11 @@ class _EmptyResults extends StatelessWidget {
           Text(
             hasQuery
                 ? 'Try different search terms or filters'
-                : 'Add folders from the menu to start',
+                : 'Files will appear here after scanning',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: colorScheme.outline,
             ),
           ),
-          if (!hasQuery) ...[
-            const SizedBox(height: 24),
-            Builder(
-              builder: (context) => FilledButton.icon(
-                onPressed: () => Scaffold.of(context).openDrawer(),
-                icon: const Icon(Icons.add),
-                label: const Text('Add Folders'),
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -422,15 +513,22 @@ class _EmptyResults extends StatelessWidget {
 // Results Grid
 // ═══════════════════════════════════════════════════════════
 
-class _ResultsGrid extends StatelessWidget {
+class _ResultsGrid extends ConsumerWidget {
   final List<FileRecordCompact> files;
+  final int? selectedFileId;
+  final ValueChanged<FileRecordCompact> onFileSelected;
 
-  const _ResultsGrid({required this.files});
+  const _ResultsGrid({
+    required this.files,
+    required this.selectedFileId,
+    required this.onFileSelected,
+  });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final width = MediaQuery.of(context).size.width;
-    final crossAxisCount = width > 1200 ? 6 : width > 800 ? 4 : width > 600 ? 3 : 2;
+    final crossAxisCount =
+        width > 1200 ? 6 : width > 800 ? 4 : width > 600 ? 3 : 2;
 
     return GridView.builder(
       padding: const EdgeInsets.all(16),
@@ -443,16 +541,72 @@ class _ResultsGrid extends StatelessWidget {
       itemCount: files.length,
       itemBuilder: (context, index) {
         final file = files[index];
-        return _FileCard(file: file);
+        return _FileCard(
+          file: file,
+          isSelected: file.id == selectedFileId,
+          onTap: () => onFileSelected(file),
+          onDoubleTap: () => _openFile(context, ref, file.id),
+        );
       },
     );
+  }
+
+  Future<void> _openFile(BuildContext context, WidgetRef ref, int fileId) async {
+    // Получаем полную информацию о файле
+    final fileDetails = await ref.read(fileDetailsProvider(fileId).future);
+    if (fileDetails == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('File not found')),
+        );
+      }
+      return;
+    }
+
+    final folders = await ref.read(foldersNotifierProvider.future);
+    final folder = folders.where((f) => f.id == fileDetails.folderId).firstOrNull;
+
+    if (folder == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Folder not found')),
+        );
+      }
+      return;
+    }
+
+    final fullPath = '${folder.path}/${fileDetails.relativePath}'.replaceAll('/', '\\');
+
+    try {
+      if (Platform.isWindows) {
+        await Process.run('cmd', ['/c', 'start', '', fullPath]);
+      } else if (Platform.isMacOS) {
+        await Process.run('open', [fullPath]);
+      } else if (Platform.isLinux) {
+        await Process.run('xdg-open', [fullPath]);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to open: $e')),
+        );
+      }
+    }
   }
 }
 
 class _FileCard extends StatelessWidget {
   final FileRecordCompact file;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final VoidCallback onDoubleTap;
 
-  const _FileCard({required this.file});
+  const _FileCard({
+    required this.file,
+    this.isSelected = false,
+    required this.onTap,
+    required this.onDoubleTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -461,22 +615,31 @@ class _FileCard extends StatelessWidget {
 
     return Card(
       clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: isSelected
+            ? BorderSide(color: colorScheme.primary, width: 2)
+            : BorderSide.none,
+      ),
+      elevation: isSelected ? 4 : 0,
       child: InkWell(
-        onTap: () => context.push('/file/${file.id}'),
+        onTap: onTap,
+        onDoubleTap: onDoubleTap,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Thumbnail area
+            // Thumbnail area with image preview
             Expanded(
-              child: Container(
-                color: colorScheme.surfaceContainerHighest,
-                child: Center(
-                  child: Icon(
-                    getContentTypeIcon(file.contentType),
-                    size: 48,
-                    color: getContentTypeColor(file.contentType),
-                  ),
-                ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  FileThumbnail(file: file),
+                  // Selection overlay
+                  if (isSelected)
+                    Container(
+                      color: colorScheme.primary.withValues(alpha: 0.1),
+                    ),
+                ],
               ),
             ),
             // Info
@@ -489,6 +652,7 @@ class _FileCard extends StatelessWidget {
                     file.name,
                     style: theme.textTheme.bodySmall?.copyWith(
                       fontWeight: FontWeight.w500,
+                      color: isSelected ? colorScheme.primary : null,
                     ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -577,10 +741,10 @@ class _AppDrawer extends ConsumerWidget {
                 context.push('/tags');
               },
             ),
-            
+
             const Spacer(),
             const Divider(),
-            
+
             ListTile(
               leading: const Icon(Icons.settings),
               title: const Text('Settings'),
@@ -596,4 +760,3 @@ class _AppDrawer extends ConsumerWidget {
     );
   }
 }
-

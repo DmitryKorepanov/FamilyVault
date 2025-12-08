@@ -367,9 +367,11 @@ std::vector<FileRecord> IndexManager::getFilesByFolder(int64_t folderId, int lim
 std::vector<FileRecordCompact> IndexManager::getRecentFilesCompact(int limit) const {
     return m_db->query<FileRecordCompact>(
         R"SQL(
-        SELECT id, name, extension, size, content_type, modified_at, is_remote
-        FROM files
-        ORDER BY indexed_at DESC
+        SELECT f.id, f.folder_id, f.relative_path, wf.path, f.name, f.extension, 
+               f.size, f.content_type, f.modified_at, f.is_remote
+        FROM files f
+        JOIN watched_folders wf ON f.folder_id = wf.id
+        ORDER BY f.indexed_at DESC
         LIMIT ?
         )SQL",
         mapFileRecordCompact,
@@ -380,10 +382,12 @@ std::vector<FileRecordCompact> IndexManager::getRecentFilesCompact(int limit) co
 std::vector<FileRecordCompact> IndexManager::getFilesByFolderCompact(int64_t folderId, int limit, int offset) const {
     return m_db->query<FileRecordCompact>(
         R"SQL(
-        SELECT id, name, extension, size, content_type, modified_at, is_remote
-        FROM files
-        WHERE folder_id = ?
-        ORDER BY name
+        SELECT f.id, f.folder_id, f.relative_path, wf.path, f.name, f.extension, 
+               f.size, f.content_type, f.modified_at, f.is_remote
+        FROM files f
+        JOIN watched_folders wf ON f.folder_id = wf.id
+        WHERE f.folder_id = ?
+        ORDER BY f.name
         LIMIT ? OFFSET ?
         )SQL",
         mapFileRecordCompact,
@@ -508,13 +512,16 @@ FileRecord IndexManager::mapFileRecord(sqlite3_stmt* stmt) {
 FileRecordCompact IndexManager::mapFileRecordCompact(sqlite3_stmt* stmt) {
     FileRecordCompact r;
     r.id = Database::getInt64(stmt, 0);
-    r.name = Database::getString(stmt, 1);
-    r.extension = Database::getString(stmt, 2);
-    r.size = Database::getInt64(stmt, 3);
-    r.contentType = static_cast<ContentType>(Database::getInt(stmt, 4));
-    r.modifiedAt = Database::getInt64(stmt, 5);
-    r.isRemote = Database::getInt(stmt, 6) != 0;
-    r.hasThumbnail = false; // TODO: check thumbnail cache
+    r.folderId = Database::getInt64(stmt, 1);
+    r.relativePath = Database::getString(stmt, 2);
+    r.folderPath = Database::getString(stmt, 3);
+    r.name = Database::getString(stmt, 4);
+    r.extension = Database::getString(stmt, 5);
+    r.size = Database::getInt64(stmt, 6);
+    r.contentType = static_cast<ContentType>(Database::getInt(stmt, 7));
+    r.modifiedAt = Database::getInt64(stmt, 8);
+    r.isRemote = Database::getInt(stmt, 9) != 0;
+    r.hasThumbnail = r.contentType == ContentType::Image; // Images have thumbnails
     return r;
 }
 

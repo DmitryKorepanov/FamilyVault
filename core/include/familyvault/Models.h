@@ -29,6 +29,9 @@ struct ImageMetadata {
 
 struct FileRecordCompact {
     int64_t id = 0;
+    int64_t folderId = 0;
+    std::string relativePath;
+    std::string folderPath;  // Путь к папке для построения полного пути
     std::string name;
     std::string extension;
     int64_t size = 0;

@@ -57,6 +57,9 @@ class ImageMetadata {
 /// Компактная версия записи о файле (для списков)
 class FileRecordCompact {
   final int id;
+  final int folderId;
+  final String relativePath;
+  final String folderPath;
   final String name;
   final String extension;
   final int size;
@@ -67,6 +70,9 @@ class FileRecordCompact {
 
   const FileRecordCompact({
     required this.id,
+    required this.folderId,
+    required this.relativePath,
+    required this.folderPath,
     required this.name,
     required this.extension,
     required this.size,
@@ -79,6 +85,9 @@ class FileRecordCompact {
   factory FileRecordCompact.fromJson(Map<String, dynamic> json) {
     return FileRecordCompact(
       id: json['id'] as int,
+      folderId: json['folderId'] as int? ?? 0,
+      relativePath: json['relativePath'] as String? ?? '',
+      folderPath: json['folderPath'] as String? ?? '',
       name: json['name'] as String,
       extension: json['extension'] as String? ?? '',
       size: json['size'] as int,
@@ -92,6 +101,9 @@ class FileRecordCompact {
 
   Map<String, dynamic> toJson() => {
         'id': id,
+        'folderId': folderId,
+        'relativePath': relativePath,
+        'folderPath': folderPath,
         'name': name,
         'extension': extension,
         'size': size,
@@ -106,6 +118,12 @@ class FileRecordCompact {
   bool get isVideo => contentType == ContentType.video;
   bool get isAudio => contentType == ContentType.audio;
   bool get isDocument => contentType == ContentType.document;
+  
+  /// Полный путь к файлу
+  String get fullPath {
+    final separator = folderPath.contains('\\') ? '\\' : '/';
+    return '$folderPath$separator$relativePath';
+  }
 }
 
 /// Полная версия записи о файле (для детального view)
@@ -210,15 +228,18 @@ class FileRecord {
   bool get isAudio => contentType == ContentType.audio;
   bool get isDocument => contentType == ContentType.document;
 
-  FileRecordCompact toCompact() => FileRecordCompact(
+  FileRecordCompact toCompact({String folderPath = ''}) => FileRecordCompact(
         id: id,
+        folderId: folderId,
+        relativePath: relativePath,
+        folderPath: folderPath,
         name: name,
         extension: extension,
         size: size,
         contentType: contentType,
         modifiedAt: modifiedAt,
         isRemote: isRemote,
-        hasThumbnail: imageMeta != null,
+        hasThumbnail: imageMeta != null || contentType == ContentType.image,
       );
 
   FileRecord copyWith({
