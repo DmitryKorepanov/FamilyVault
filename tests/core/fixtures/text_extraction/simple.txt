@@ -1,0 +1,4 @@
+Hello World
+This is a simple test file.
+FamilyVault text extraction test.
+

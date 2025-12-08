@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+    <document>
+        <title>XML Test Document</title>
+        <content>This is XML content for testing.</content>
+        <data><![CDATA[CDATA section with special <chars> & symbols]]></data>
+    </document>
+    <items>
+        <item id="1">First item value</item>
+        <item id="2">Second item value</item>
+    </items>
+</root>
+

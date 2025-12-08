@@ -34,3 +34,13 @@ gtest_discover_tests(familyvault_tests)
 # Copy test fixtures
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/fixtures
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/)
+
+# Copy familyvault.dll to tests directory after build
+if(WIN32)
+    add_custom_command(TARGET familyvault_tests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:familyvault>
+            $<TARGET_FILE_DIR:familyvault_tests>/
+        COMMENT "Copying familyvault.dll to tests directory"
+    )
+endif()

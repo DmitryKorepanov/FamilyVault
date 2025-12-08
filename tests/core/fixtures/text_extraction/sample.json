@@ -1,0 +1,13 @@
+{
+    "title": "JSON Test Document",
+    "description": "This is a test JSON file for text extraction",
+    "items": [
+        {"name": "First", "value": 100},
+        {"name": "Second", "value": 200}
+    ],
+    "metadata": {
+        "author": "FamilyVault",
+        "version": "1.0"
+    }
+}
+

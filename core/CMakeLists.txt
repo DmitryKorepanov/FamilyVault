@@ -51,10 +51,10 @@ target_compile_features(familyvault PUBLIC cxx_std_20)
 # Export макрос
 target_compile_definitions(familyvault PRIVATE FAMILYVAULT_EXPORTS)
 
-# Для Windows: экспорт символов
+# Для Windows: экспорт символов (ON для тестов)
 if(WIN32)
     set_target_properties(familyvault PROPERTIES
-        WINDOWS_EXPORT_ALL_SYMBOLS OFF
+        WINDOWS_EXPORT_ALL_SYMBOLS ON
     )
 endif()
 
