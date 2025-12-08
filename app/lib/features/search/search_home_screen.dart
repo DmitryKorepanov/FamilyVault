@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:open_filex/open_filex.dart';
 
 import '../../core/models/models.dart';
 import '../../core/providers/providers.dart';
@@ -146,57 +148,67 @@ class _SearchHomeScreenState extends ConsumerState<SearchHomeScreen> {
   }
 
   Future<void> _addFolder(BuildContext context, WidgetRef ref) async {
-    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-      final result = await FilePicker.platform.getDirectoryPath();
-      if (result != null) {
-        final folderName = result.split(RegExp(r'[/\\]')).last;
-
+    // Android: запросить права доступа
+    if (Platform.isAndroid) {
+      final status = await Permission.manageExternalStorage.request();
+      if (!status.isGranted) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Row(
-                children: [
-                  const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text('Adding $folderName...'),
-                ],
+              content: const Text('Storage permission required'),
+              action: SnackBarAction(
+                label: 'Settings',
+                onPressed: () => openAppSettings(),
               ),
-              duration: const Duration(seconds: 10),
             ),
           );
         }
-
-        await ref.read(foldersNotifierProvider.notifier).addFolder(result);
-
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.check_circle, color: Colors.white),
-                  const SizedBox(width: 12),
-                  Text('$folderName added successfully!'),
-                ],
-              ),
-              backgroundColor: Colors.green.shade600,
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
+        return;
       }
-    } else {
+    }
+
+    final result = await FilePicker.platform.getDirectoryPath();
+    if (result != null) {
+      final folderName = result.split(RegExp(r'[/\\]')).last;
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Folder picker not available on mobile yet')),
+          SnackBar(
+            content: Row(
+              children: [
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text('Adding $folderName...'),
+              ],
+            ),
+            duration: const Duration(seconds: 10),
+          ),
+        );
+      }
+
+      await ref.read(foldersNotifierProvider.notifier).addFolder(result);
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 12),
+                Text('$folderName added successfully!'),
+              ],
+            ),
+            backgroundColor: Colors.green.shade600,
+            duration: const Duration(seconds: 2),
+          ),
         );
       }
     }
@@ -552,7 +564,6 @@ class _ResultsGrid extends ConsumerWidget {
   }
 
   Future<void> _openFile(BuildContext context, WidgetRef ref, int fileId) async {
-    // Получаем полную информацию о файле
     final fileDetails = await ref.read(fileDetailsProvider(fileId).future);
     if (fileDetails == null) {
       if (context.mounted) {
@@ -575,10 +586,18 @@ class _ResultsGrid extends ConsumerWidget {
       return;
     }
 
-    final fullPath = '${folder.path}/${fileDetails.relativePath}'.replaceAll('/', '\\');
+    final path = '${folder.path}/${fileDetails.relativePath}';
+    final fullPath = Platform.isWindows ? path.replaceAll('/', '\\') : path;
 
     try {
-      if (Platform.isWindows) {
+      if (Platform.isAndroid || Platform.isIOS) {
+        final result = await OpenFilex.open(fullPath);
+        if (result.type != ResultType.done && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Cannot open: ${result.message}')),
+          );
+        }
+      } else if (Platform.isWindows) {
         await Process.run('cmd', ['/c', 'start', '', fullPath]);
       } else if (Platform.isMacOS) {
         await Process.run('open', [fullPath]);

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/models/models.dart';
 import '../../core/providers/providers.dart';
@@ -103,34 +104,44 @@ class FoldersScreen extends ConsumerWidget {
   }
 
   Future<void> _addFolder(BuildContext context, WidgetRef ref) async {
-    // На desktop используем file picker
-    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-      final result = await FilePicker.platform.getDirectoryPath();
-      if (result != null) {
-        final folderName = result.split(RegExp(r'[/\\]')).last;
-        
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Adding $folderName...')),
-          );
-        }
-        
-        await ref.read(foldersNotifierProvider.notifier).addFolder(result);
-        
+    // Android: запросить права доступа
+    if (Platform.isAndroid) {
+      final status = await Permission.manageExternalStorage.request();
+      if (!status.isGranted) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('$folderName added and scanned!'),
-              backgroundColor: Colors.green,
+              content: const Text('Storage permission required'),
+              action: SnackBarAction(
+                label: 'Settings',
+                onPressed: () => openAppSettings(),
+              ),
             ),
           );
         }
+        return;
       }
-    } else {
-      // Mobile: показать диалог
+    }
+    
+    // Выбор папки через file picker
+    final result = await FilePicker.platform.getDirectoryPath();
+    if (result != null) {
+      final folderName = result.split(RegExp(r'[/\\]')).last;
+      
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Folder picker not available on mobile yet')),
+          SnackBar(content: Text('Adding $folderName...')),
+        );
+      }
+      
+      await ref.read(foldersNotifierProvider.notifier).addFolder(result);
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$folderName added and scanned!'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
     }

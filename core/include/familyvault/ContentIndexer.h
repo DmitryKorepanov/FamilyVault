@@ -4,7 +4,7 @@
 #pragma once
 
 #include "export.h"
-#include "TextExtractor.h"
+
 #include <memory>
 #include <functional>
 #include <atomic>
@@ -12,6 +12,33 @@
 #include <mutex>
 #include <condition_variable>
 #include <queue>
+#include <optional>
+#include <string>
+
+#if ENABLE_TEXT_EXTRACTION
+#include "TextExtractor.h"
+#else
+// Stub for when text extraction is disabled (Android builds)
+namespace FamilyVault {
+    struct ExtractionResult {
+        std::string text;
+        std::string method;
+        std::string language;
+        double confidence = 0.0;
+        bool isEmpty() const { return text.empty(); }
+    };
+    
+    /// No-op registry that never extracts anything
+    class TextExtractorRegistry {
+    public:
+        static std::shared_ptr<TextExtractorRegistry> createDefault() { 
+            return std::make_shared<TextExtractorRegistry>(); 
+        }
+        bool canExtract(const std::string&) const { return false; }
+        std::optional<ExtractionResult> extract(const std::string&, const std::string&) { return std::nullopt; }
+    };
+}
+#endif
 
 namespace FamilyVault {
 

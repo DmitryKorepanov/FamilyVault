@@ -8,14 +8,26 @@
     },
     "openssl",
     "nlohmann-json",
-    "spdlog",
-    "gtest",
-    "poppler",
-    "libzip",
-    "pugixml",
-    {
-      "name": "pkgconf",
-      "host": true
+    "fmt",
+    "spdlog"
+  ],
+  "features": {
+    "tests": {
+      "description": "Build unit tests",
+      "dependencies": ["gtest"]
+    },
+    "text-extraction": {
+      "description": "Enable text extraction from documents (PDF, DOCX, etc.)",
+      "dependencies": [
+        "poppler",
+        "libzip", 
+        "pugixml",
+        {
+          "name": "pkgconf",
+          "host": true
+        }
+      ]
     }
-  ]
+  },
+  "default-features": ["tests"]
 }

@@ -75,6 +75,10 @@ void ContentIndexer::enqueueFile(int64_t fileId) {
 }
 
 int ContentIndexer::enqueueUnprocessed() {
+#if !ENABLE_TEXT_EXTRACTION
+    // Text extraction disabled - nothing to enqueue
+    return 0;
+#else
     // Находим файлы с поддерживаемыми MIME типами:
     // 1. Без извлечённого контента
     // 2. ИЛИ изменённые после извлечения (rescan case)
@@ -114,9 +118,13 @@ int ContentIndexer::enqueueUnprocessed() {
     
     spdlog::info("ContentIndexer: enqueued {} unprocessed files", fileIds.size());
     return static_cast<int>(fileIds.size());
+#endif // ENABLE_TEXT_EXTRACTION
 }
 
 int ContentIndexer::getPendingCount() const {
+#if !ENABLE_TEXT_EXTRACTION
+    return 0;
+#else
     auto count = m_db->queryScalar(R"SQL(
         SELECT COUNT(*) FROM files f
         LEFT JOIN file_content fc ON f.id = fc.file_id
@@ -135,6 +143,7 @@ int ContentIndexer::getPendingCount() const {
     )SQL");
     
     return static_cast<int>(count);
+#endif // ENABLE_TEXT_EXTRACTION
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -300,6 +309,12 @@ void ContentIndexer::workerThread() {
 // ═══════════════════════════════════════════════════════════
 
 bool ContentIndexer::processFileInternal(int64_t fileId) {
+#if !ENABLE_TEXT_EXTRACTION
+    // Text extraction disabled at compile time (Android builds)
+    // Skip processing entirely to avoid filling DB with unsupported records
+    (void)fileId;
+    return false;
+#else
     try {
         // Получаем информацию о файле
         auto fileInfo = getFileInfo(fileId);
@@ -380,6 +395,7 @@ bool ContentIndexer::processFileInternal(int64_t fileId) {
         } catch (...) {}
         return false;
     }
+#endif // ENABLE_TEXT_EXTRACTION
 }
 
 std::optional<ContentIndexer::FileInfo> ContentIndexer::getFileInfo(int64_t fileId) const {

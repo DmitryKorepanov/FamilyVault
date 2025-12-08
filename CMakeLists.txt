@@ -6,13 +6,18 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(BUILD_TESTS "Build unit tests" ON)
-option(BUILD_SHARED "Build shared library for FFI" ON)
+option(ENABLE_TEXT_EXTRACTION "Enable text extraction from documents (PDF, DOCX, etc.)" ON)
 
 # Зависимости
 find_package(SQLite3 REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(nlohmann_json REQUIRED)
-find_package(spdlog REQUIRED)
+find_package(fmt CONFIG REQUIRED)
+
+# spdlog: compiled library on desktop, header-only on Android (glibc issues)
+if(NOT ANDROID)
+    find_package(spdlog CONFIG REQUIRED)
+endif()
 
 add_subdirectory(core)
 

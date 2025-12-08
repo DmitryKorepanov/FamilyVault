@@ -1,6 +1,6 @@
 # Core library CMakeLists.txt
 
-# Исходники
+# Базовые исходники (всегда включены)
 set(CORE_SOURCES
     src/Database/Database.cpp
     src/Database/Migrations.cpp
@@ -10,14 +10,20 @@ set(CORE_SOURCES
     src/Search/SearchEngine.cpp
     src/Tags/TagManager.cpp
     src/Duplicates/DuplicateFinder.cpp
-    src/TextExtractor/TextExtractorRegistry.cpp
-    src/TextExtractor/PlainTextExtractor.cpp
-    src/TextExtractor/PdfTextExtractor.cpp
-    src/TextExtractor/OfficeTextExtractor.cpp
     src/Utils/Types.cpp
     src/Utils/MimeTypeDetector.cpp
     src/ffi/familyvault_c.cpp
 )
+
+# Text extraction (опционально - требует poppler, libzip, pugixml)
+if(ENABLE_TEXT_EXTRACTION)
+    list(APPEND CORE_SOURCES
+        src/TextExtractor/TextExtractorRegistry.cpp
+        src/TextExtractor/PlainTextExtractor.cpp
+        src/TextExtractor/PdfTextExtractor.cpp
+        src/TextExtractor/OfficeTextExtractor.cpp
+    )
+endif()
 
 # Shared library для FFI
 add_library(familyvault SHARED ${CORE_SOURCES})
@@ -27,23 +33,44 @@ target_include_directories(familyvault
     PRIVATE src
 )
 
-# Find packages
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(POPPLER_CPP REQUIRED IMPORTED_TARGET poppler-cpp)
-find_package(libzip CONFIG REQUIRED)
-find_package(pugixml CONFIG REQUIRED)
-
+# Base dependencies
 target_link_libraries(familyvault
     PRIVATE
         SQLite::SQLite3
         OpenSSL::SSL
         OpenSSL::Crypto
         nlohmann_json::nlohmann_json
-        spdlog::spdlog
-        PkgConfig::POPPLER_CPP
-        libzip::zip
-        pugixml::pugixml
 )
+
+# spdlog: header-only on Android (compiled lib uses glibc-specific functions)
+if(ANDROID)
+    find_package(fmt CONFIG REQUIRED)
+    target_link_libraries(familyvault PRIVATE fmt::fmt)
+    target_include_directories(familyvault PRIVATE ${CMAKE_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/include)
+    target_compile_definitions(familyvault PRIVATE SPDLOG_HEADER_ONLY SPDLOG_FMT_EXTERNAL)
+else()
+    find_package(spdlog CONFIG REQUIRED)
+    target_link_libraries(familyvault PRIVATE spdlog::spdlog)
+endif()
+
+# Text extraction dependencies (опционально)
+if(ENABLE_TEXT_EXTRACTION)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(POPPLER_CPP REQUIRED IMPORTED_TARGET poppler-cpp)
+    find_package(libzip CONFIG REQUIRED)
+    find_package(pugixml CONFIG REQUIRED)
+    
+    target_link_libraries(familyvault
+        PRIVATE
+            PkgConfig::POPPLER_CPP
+            libzip::zip
+            pugixml::pugixml
+    )
+    
+    target_compile_definitions(familyvault PRIVATE ENABLE_TEXT_EXTRACTION=1)
+else()
+    target_compile_definitions(familyvault PRIVATE ENABLE_TEXT_EXTRACTION=0)
+endif()
 
 # C++20 features
 target_compile_features(familyvault PUBLIC cxx_std_20)
@@ -102,7 +129,18 @@ if(WIN32)
             )
         endif()
     endforeach()
+elseif(ANDROID)
+    # Android: copy to jniLibs
+    set(ANDROID_JNILIBS_DIR "${CMAKE_SOURCE_DIR}/app/android/app/src/main/jniLibs/${ANDROID_ABI}")
+    file(MAKE_DIRECTORY "${ANDROID_JNILIBS_DIR}")
+    add_custom_command(TARGET familyvault POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:familyvault>
+            "${ANDROID_JNILIBS_DIR}/"
+        COMMENT "Copying libfamilyvault.so to ${ANDROID_JNILIBS_DIR}/"
+    )
 else()
+    # Linux
     add_custom_command(TARGET familyvault POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             $<TARGET_FILE:familyvault>

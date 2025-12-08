@@ -7,6 +7,9 @@
 #include <memory>
 #include <stdexcept>
 #include <variant>
+#include <type_traits>
+
+#include <sqlite3.h>
 
 struct sqlite3;
 struct sqlite3_stmt;
@@ -171,6 +174,15 @@ private:
     // Привязка параметров
     void bindParameter(sqlite3_stmt* stmt, int index, int value);
     void bindParameter(sqlite3_stmt* stmt, int index, int64_t value);
+    // Явная перегрузка для long long если int64_t != long long
+    // (на Windows int64_t = long long, на Linux ARM64 int64_t = long)
+    template<typename T>
+    std::enable_if_t<
+        std::is_same_v<T, long long> && !std::is_same_v<int64_t, long long>,
+        void
+    > bindParameter(sqlite3_stmt* stmt, int index, T value) {
+        sqlite3_bind_int64(stmt, index, static_cast<int64_t>(value));
+    }
     void bindParameter(sqlite3_stmt* stmt, int index, double value);
     void bindParameter(sqlite3_stmt* stmt, int index, const std::string& value);
     void bindParameter(sqlite3_stmt* stmt, int index, const char* value);

@@ -367,10 +367,24 @@ void FileScanner::scan(const std::string& rootPath,
                             file.size = static_cast<int64_t>(entry.file_size());
 
                             auto lastWrite = fs::last_write_time(entry);
+                            // Portable conversion: file_time_type -> system_clock
+                            // Note: clock_cast is C++20 but not available on all platforms
+#if defined(__cpp_lib_chrono) && __cpp_lib_chrono >= 201907L
                             auto sctp = std::chrono::time_point_cast<std::chrono::seconds>(
                                 std::chrono::clock_cast<std::chrono::system_clock>(lastWrite)
                             );
                             file.modifiedAt = sctp.time_since_epoch().count();
+#else
+                            // Fallback for platforms without clock_cast (e.g., Android NDK)
+                            auto fileTime = lastWrite.time_since_epoch();
+                            auto sysNow = std::chrono::system_clock::now();
+                            auto fileNow = fs::file_time_type::clock::now();
+                            auto diff = fileNow - lastWrite;
+                            auto sysTime = sysNow - diff;
+                            file.modifiedAt = std::chrono::duration_cast<std::chrono::seconds>(
+                                sysTime.time_since_epoch()
+                            ).count();
+#endif
 
                             // created_at не всегда доступен, используем modified
                             file.createdAt = file.modifiedAt;

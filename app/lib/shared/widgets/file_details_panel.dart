@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/models/models.dart';
 import '../../core/providers/providers.dart';
@@ -279,10 +281,16 @@ class _FileDetailsContent extends ConsumerWidget {
           ),
         ),
 
-        // Action buttons
+        // Action buttons - different on mobile vs desktop
         Container(
-          padding: const EdgeInsets.all(12),
+          padding: EdgeInsets.only(
+            left: 12,
+            right: 12,
+            top: 12,
+            bottom: 12 + MediaQuery.of(context).viewPadding.bottom,
+          ),
           decoration: BoxDecoration(
+            color: colorScheme.surface,
             border: Border(
               top: BorderSide(
                 color: colorScheme.outlineVariant.withValues(alpha: 0.5),
@@ -293,9 +301,18 @@ class _FileDetailsContent extends ConsumerWidget {
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => _openInFolder(context, ref),
-                  icon: const Icon(Icons.folder_open, size: 18),
-                  label: const Text('Show in Folder'),
+                  onPressed: () => Platform.isAndroid || Platform.isIOS
+                      ? _shareFile(context, ref)
+                      : _openInFolder(context, ref),
+                  icon: Icon(
+                    Platform.isAndroid || Platform.isIOS
+                        ? Icons.share
+                        : Icons.folder_open,
+                    size: 18,
+                  ),
+                  label: Text(
+                    Platform.isAndroid || Platform.isIOS ? 'Share' : 'Folder',
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -313,6 +330,11 @@ class _FileDetailsContent extends ConsumerWidget {
     );
   }
 
+  String _getFullPath(WatchedFolder folder) {
+    final path = '${folder.path}/${file.relativePath}';
+    return Platform.isWindows ? path.replaceAll('/', '\\') : path;
+  }
+
   Future<void> _openFile(BuildContext context, WidgetRef ref) async {
     final folders = await ref.read(foldersNotifierProvider.future);
     final folder = folders.where((f) => f.id == file.folderId).firstOrNull;
@@ -326,10 +348,18 @@ class _FileDetailsContent extends ConsumerWidget {
       return;
     }
 
-    final fullPath = '${folder.path}/${file.relativePath}'.replaceAll('/', '\\');
+    final fullPath = _getFullPath(folder);
 
     try {
-      if (Platform.isWindows) {
+      if (Platform.isAndroid || Platform.isIOS) {
+        // Mobile: use open_filex
+        final result = await OpenFilex.open(fullPath);
+        if (result.type != ResultType.done && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Cannot open: ${result.message}')),
+          );
+        }
+      } else if (Platform.isWindows) {
         await Process.run('cmd', ['/c', 'start', '', fullPath]);
       } else if (Platform.isMacOS) {
         await Process.run('open', [fullPath]);
@@ -358,7 +388,7 @@ class _FileDetailsContent extends ConsumerWidget {
       return;
     }
 
-    final fullPath = '${folder.path}/${file.relativePath}'.replaceAll('/', '\\');
+    final fullPath = _getFullPath(folder);
 
     try {
       if (Platform.isWindows) {
@@ -373,6 +403,32 @@ class _FileDetailsContent extends ConsumerWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to open folder: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _shareFile(BuildContext context, WidgetRef ref) async {
+    final folders = await ref.read(foldersNotifierProvider.future);
+    final folder = folders.where((f) => f.id == file.folderId).firstOrNull;
+
+    if (folder == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Folder not found')),
+        );
+      }
+      return;
+    }
+
+    final fullPath = _getFullPath(folder);
+
+    try {
+      await Share.shareXFiles([XFile(fullPath)], text: file.name);
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to share: $e')),
         );
       }
     }
