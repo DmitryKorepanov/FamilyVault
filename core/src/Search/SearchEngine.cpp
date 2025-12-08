@@ -275,9 +275,10 @@ std::vector<FileRecord> SearchEngine::getByExtension(const std::string& ext, int
 
     return m_db->query<FileRecord>(
         R"SQL(
-        SELECT f.id, f.folder_id, f.relative_path, f.name, f.extension, f.size,
-               f.mime_type, f.content_type, f.checksum, f.created_at, f.modified_at,
-               f.indexed_at, COALESCE(f.visibility, wf.visibility) as visibility,
+        SELECT f.id, f.folder_id, f.relative_path, wf.path as folder_path,
+               f.name, f.extension, f.size, f.mime_type, f.content_type,
+               f.checksum, f.created_at, f.modified_at, f.indexed_at,
+               COALESCE(f.visibility, wf.visibility) as visibility,
                f.source_device_id, f.is_remote, f.sync_version, f.last_modified_by
         FROM files f
         JOIN watched_folders wf ON f.folder_id = wf.id
@@ -293,9 +294,10 @@ std::vector<FileRecord> SearchEngine::getByExtension(const std::string& ext, int
 std::vector<FileRecord> SearchEngine::getByContentType(ContentType type, int limit) {
     return m_db->query<FileRecord>(
         R"SQL(
-        SELECT f.id, f.folder_id, f.relative_path, f.name, f.extension, f.size,
-               f.mime_type, f.content_type, f.checksum, f.created_at, f.modified_at,
-               f.indexed_at, COALESCE(f.visibility, wf.visibility) as visibility,
+        SELECT f.id, f.folder_id, f.relative_path, wf.path as folder_path,
+               f.name, f.extension, f.size, f.mime_type, f.content_type,
+               f.checksum, f.created_at, f.modified_at, f.indexed_at,
+               COALESCE(f.visibility, wf.visibility) as visibility,
                f.source_device_id, f.is_remote, f.sync_version, f.last_modified_by
         FROM files f
         JOIN watched_folders wf ON f.folder_id = wf.id
@@ -311,9 +313,10 @@ std::vector<FileRecord> SearchEngine::getByContentType(ContentType type, int lim
 std::vector<FileRecord> SearchEngine::getByTag(const std::string& tag, int limit) {
     return m_db->query<FileRecord>(
         R"SQL(
-        SELECT f.id, f.folder_id, f.relative_path, f.name, f.extension, f.size,
-               f.mime_type, f.content_type, f.checksum, f.created_at, f.modified_at,
-               f.indexed_at, COALESCE(f.visibility, wf.visibility) as visibility,
+        SELECT f.id, f.folder_id, f.relative_path, wf.path as folder_path,
+               f.name, f.extension, f.size, f.mime_type, f.content_type,
+               f.checksum, f.created_at, f.modified_at, f.indexed_at,
+               COALESCE(f.visibility, wf.visibility) as visibility,
                f.source_device_id, f.is_remote, f.sync_version, f.last_modified_by
         FROM files f
         JOIN watched_folders wf ON f.folder_id = wf.id
@@ -361,7 +364,7 @@ FileRecord SearchEngine::mapFileRecord(sqlite3_stmt* stmt) {
     r.id = Database::getInt64(stmt, 0);
     r.folderId = Database::getInt64(stmt, 1);
     r.relativePath = Database::getString(stmt, 2);
-    // Skip column 3 (folder_path - not in FileRecord)
+    r.folderPath = Database::getString(stmt, 3);
     r.name = Database::getString(stmt, 4);
     r.extension = Database::getString(stmt, 5);
     r.size = Database::getInt64(stmt, 6);

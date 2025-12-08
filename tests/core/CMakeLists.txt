@@ -8,6 +8,8 @@ set(TEST_SOURCES
     test_index_manager.cpp
     test_search_engine.cpp
     test_tags.cpp
+    test_text_extractor.cpp
+    test_content_indexer.cpp
 )
 
 add_executable(familyvault_tests ${TEST_SOURCES})

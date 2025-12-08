@@ -49,6 +49,7 @@ struct FileRecord {
     int64_t id = 0;
     int64_t folderId = 0;
     std::string relativePath;
+    std::string folderPath;  // Путь к папке для построения полного пути
     std::string name;
     std::string extension;
     int64_t size = 0;
@@ -77,7 +78,7 @@ struct FileRecord {
     bool isPrivate() const { return visibility == Visibility::Private; }
     
     // Получить полный путь
-    std::string getFullPath(const std::string& folderPath) const {
+    std::string getFullPath() const {
         if (folderPath.empty()) return relativePath;
         if (folderPath.back() == '/' || folderPath.back() == '\\') {
             return folderPath + relativePath;
