@@ -1,7 +1,4 @@
-/// Типы данных FamilyVault
-/// Контракт с C++ — см. SPECIFICATIONS.md, раздел 8
-
-/// Тип контента файла
+/// Тип контента файла (контракт с C++ — см. SPECIFICATIONS.md)
 enum ContentType {
   unknown(0),
   image(1),

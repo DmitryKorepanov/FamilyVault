@@ -1,8 +1,12 @@
+import 'dart:io';
+import 'dart:developer' as dev;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../ffi/native_bridge.dart';
 import '../models/models.dart';
 import '../services/services.dart';
+import 'network_providers.dart';
 
 // ═══════════════════════════════════════════════════════════
 // Сервисы (синглтоны)
@@ -59,8 +63,59 @@ final appInitializedProvider = FutureProvider<bool>((ref) async {
     contentIndexer.start();
   }
   
+  // Initialize P2P networking components
+  await _initializeP2P(ref);
+  
   return true;
 });
+
+/// Инициализация P2P компонентов (вызывается один раз при старте)
+Future<void> _initializeP2P(Ref ref) async {
+  final networkService = ref.read(networkServiceProvider);
+  
+  // Skip if family not configured
+  if (!networkService.isFamilyConfigured()) {
+    dev.log('P2P: Skipping - family not configured', name: 'P2P');
+    return;
+  }
+  
+  try {
+    // 1. Start network FIRST (creates NetworkManager, TLS server, discovery)
+    dev.log('P2P: Starting network...', name: 'P2P');
+    networkService.startNetwork();
+    
+    // 2. Setup index sync (requires NetworkManager to exist!)
+    dev.log('P2P: Setting up index sync...', name: 'P2P');
+    networkService.setupIndexSync();
+    
+    // 3. Setup file transfer cache directory
+    final cacheDir = await getApplicationCacheDirectory();
+    final p2pCacheDir = Directory('${cacheDir.path}/p2p_files');
+    if (!p2pCacheDir.existsSync()) {
+      p2pCacheDir.createSync(recursive: true);
+    }
+    networkService.setFileCacheDir(p2pCacheDir.path);
+    
+    // 4. Start Android foreground service for multicast/wake locks
+    if (Platform.isAndroid) {
+      try {
+        final androidService = ref.read(androidNetworkServiceProvider);
+        await androidService.startService();
+        await androidService.requestBatteryOptimizationExemption();
+        dev.log('P2P: Android network service started', name: 'P2P');
+      } catch (e) {
+        dev.log('P2P: Android service failed: $e', name: 'P2P');
+        // Continue - P2P can work without foreground service, just less reliably
+      }
+    }
+    
+    dev.log('P2P: Initialization complete', name: 'P2P');
+  } catch (e, stack) {
+    // Log error with stack trace so issues are visible
+    dev.log('P2P: Initialization FAILED: $e', name: 'P2P', error: e, stackTrace: stack);
+    // Don't rethrow - app can still function without P2P
+  }
+}
 
 /// Версия C++ библиотеки
 final coreVersionProvider = Provider<String>((ref) {
@@ -316,6 +371,83 @@ final searchSuggestionsProvider = FutureProvider.family<List<String>, String>((r
   final service = ref.watch(searchServiceProvider);
   return service.suggest(prefix);
 });
+
+// ═══════════════════════════════════════════════════════════
+// Комбинированный поиск (локальные + удалённые файлы)
+// ═══════════════════════════════════════════════════════════
+
+/// Результаты поиска по удалённым файлам
+final remoteSearchResultsProvider = FutureProvider<List<RemoteFileRecord>>((ref) async {
+  await ref.watch(appInitializedProvider.future);
+  final query = ref.watch(searchQueryProvider);
+  
+  if (query.isEmpty || query.text.length < 2) return [];
+  
+  final networkService = ref.watch(networkServiceProvider);
+  if (!networkService.isFamilyConfigured()) return [];
+  
+  return networkService.searchRemoteFiles(query.text, limit: 50);
+});
+
+/// Фильтр поиска: локальные/удалённые/все
+enum SearchSource { all, local, remote }
+
+/// Текущий фильтр источника поиска
+final searchSourceFilterProvider = StateProvider<SearchSource>((ref) => SearchSource.all);
+
+/// Комбинированные результаты поиска
+final combinedSearchResultsProvider = FutureProvider<CombinedSearchResults>((ref) async {
+  await ref.watch(appInitializedProvider.future);
+  final query = ref.watch(searchQueryProvider);
+  final sourceFilter = ref.watch(searchSourceFilterProvider);
+  
+  if (query.isEmpty) {
+    final recentFiles = await ref.watch(recentFilesProvider.future);
+    return CombinedSearchResults(
+      localFiles: recentFiles,
+      remoteFiles: [],
+      query: '',
+    );
+  }
+  
+  // Получаем локальные результаты
+  List<FileRecordCompact> localFiles = [];
+  if (sourceFilter != SearchSource.remote) {
+    final searchService = ref.watch(searchServiceProvider);
+    final results = await searchService.searchCompact(query);
+    localFiles = results.map((r) => r.file).toList();
+  }
+  
+  // Получаем удалённые результаты
+  List<RemoteFileRecord> remoteFiles = [];
+  if (sourceFilter != SearchSource.local) {
+    remoteFiles = await ref.watch(remoteSearchResultsProvider.future);
+  }
+  
+  return CombinedSearchResults(
+    localFiles: localFiles,
+    remoteFiles: remoteFiles,
+    query: query.text,
+  );
+});
+
+/// Результаты комбинированного поиска
+class CombinedSearchResults {
+  final List<FileRecordCompact> localFiles;
+  final List<RemoteFileRecord> remoteFiles;
+  final String query;
+  
+  const CombinedSearchResults({
+    required this.localFiles,
+    required this.remoteFiles,
+    required this.query,
+  });
+  
+  int get totalCount => localFiles.length + remoteFiles.length;
+  bool get isEmpty => localFiles.isEmpty && remoteFiles.isEmpty;
+  bool get hasLocalResults => localFiles.isNotEmpty;
+  bool get hasRemoteResults => remoteFiles.isNotEmpty;
+}
 
 // ═══════════════════════════════════════════════════════════
 // Теги

@@ -9,8 +9,8 @@ import 'package:open_filex/open_filex.dart';
 
 import '../../core/models/models.dart';
 import '../../core/providers/providers.dart';
+import '../../core/providers/network_providers.dart';
 import '../../shared/utils/formatters.dart';
-import '../../shared/utils/file_icons.dart';
 import '../../shared/widgets/index_status_bar.dart';
 import '../../shared/widgets/file_details_panel.dart';
 import '../../shared/widgets/file_thumbnail.dart';
@@ -41,10 +41,11 @@ class _SearchHomeScreenState extends ConsumerState<SearchHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final query = ref.watch(searchQueryProvider);
-    final results = ref.watch(searchResultsProvider);
+    final combinedResults = ref.watch(combinedSearchResultsProvider);
     final stats = ref.watch(indexStatsProvider);
     final selectedFileId = ref.watch(selectedFileIdProvider);
     final isDesktop = AppSizes.isDesktop(context);
+    final sourceFilter = ref.watch(searchSourceFilterProvider);
 
     return Scaffold(
       drawer: const _AppDrawer(),
@@ -88,29 +89,36 @@ class _SearchHomeScreenState extends ConsumerState<SearchHomeScreen> {
                 children: [
                   // Results area
                   Expanded(
-                    child: results.when(
-                      data: (files) {
+                    child: combinedResults.when(
+                      data: (results) {
                         final hasFolders = stats.valueOrNull?.totalFolders ?? 0;
-                        if (files.isEmpty && hasFolders == 0) {
+                        final hasNoResults = results.isEmpty && 
+                            (sourceFilter == SearchSource.all || 
+                             (sourceFilter == SearchSource.local && results.localFiles.isEmpty) ||
+                             (sourceFilter == SearchSource.remote && results.remoteFiles.isEmpty));
+                        
+                        if (hasNoResults && hasFolders == 0 && query.isEmpty) {
                           return _EmptyWelcome(
                             onAddFolder: () => _addFolder(context, ref),
                           );
                         }
-                        if (files.isEmpty) {
+                        if (hasNoResults) {
                           return _EmptyResults(hasQuery: !query.isEmpty);
                         }
-                        return _ResultsGrid(
-                          files: files,
+                        return _CombinedResultsView(
+                          results: results,
+                          sourceFilter: sourceFilter,
                           selectedFileId: selectedFileId,
-                          onFileSelected: (file) {
+                          onLocalFileSelected: (file) {
                             if (isDesktop) {
-                              // На desktop показываем панель сбоку
                               ref.read(selectedFileIdProvider.notifier).state =
                                   file.id;
                             } else {
-                              // На mobile показываем bottom sheet
                               showFileDetailsSheet(context, file.id);
                             }
+                          },
+                          onRemoteFileSelected: (file) {
+                            context.push('/network/files/view', extra: file);
                           },
                         );
                       },
@@ -290,7 +298,7 @@ class _SearchHeader extends StatelessWidget {
 // Filter Chips
 // ═══════════════════════════════════════════════════════════
 
-class _FilterChips extends StatelessWidget {
+class _FilterChips extends ConsumerWidget {
   final ContentType? selectedType;
   final ValueChanged<ContentType> onTypeSelected;
 
@@ -300,13 +308,45 @@ class _FilterChips extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sourceFilter = ref.watch(searchSourceFilterProvider);
+    final isFamilyConfigured = ref.watch(isFamilyConfiguredProvider);
+    final remoteCount = ref.watch(remoteFileCountProvider);
+    
     return SizedBox(
       height: 48,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         children: [
+          // Source filters
+          if (isFamilyConfigured && remoteCount > 0) ...[
+            _FilterChip(
+              icon: Icons.folder,
+              label: 'Local',
+              selected: sourceFilter == SearchSource.local,
+              onTap: () {
+                ref.read(searchSourceFilterProvider.notifier).state = 
+                    sourceFilter == SearchSource.local ? SearchSource.all : SearchSource.local;
+              },
+              color: Colors.teal,
+            ),
+            const SizedBox(width: 8),
+            _FilterChip(
+              icon: Icons.cloud,
+              label: 'Family',
+              selected: sourceFilter == SearchSource.remote,
+              onTap: () {
+                ref.read(searchSourceFilterProvider.notifier).state = 
+                    sourceFilter == SearchSource.remote ? SearchSource.all : SearchSource.remote;
+              },
+              color: Colors.purple,
+            ),
+            const SizedBox(width: 8),
+            const VerticalDivider(width: 16, indent: 12, endIndent: 12),
+            const SizedBox(width: 8),
+          ],
+          // Content type filters
           _FilterChip(
             icon: Icons.image,
             label: 'Images',
@@ -614,6 +654,367 @@ class _ResultsGrid extends ConsumerWidget {
   }
 }
 
+// ═══════════════════════════════════════════════════════════
+// Combined Results View (local + remote)
+// ═══════════════════════════════════════════════════════════
+
+class _CombinedResultsView extends ConsumerWidget {
+  final CombinedSearchResults results;
+  final SearchSource sourceFilter;
+  final int? selectedFileId;
+  final ValueChanged<FileRecordCompact> onLocalFileSelected;
+  final ValueChanged<RemoteFileRecord> onRemoteFileSelected;
+
+  const _CombinedResultsView({
+    required this.results,
+    required this.sourceFilter,
+    required this.selectedFileId,
+    required this.onLocalFileSelected,
+    required this.onRemoteFileSelected,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final width = MediaQuery.of(context).size.width;
+    final crossAxisCount =
+        width > 1200 ? 6 : width > 800 ? 4 : width > 600 ? 3 : 2;
+    final theme = Theme.of(context);
+
+    // Показываем только соответствующие результаты в зависимости от фильтра
+    final showLocal = sourceFilter != SearchSource.remote;
+    final showRemote = sourceFilter != SearchSource.local;
+
+    // Если фильтр только remote, показываем только remote
+    if (sourceFilter == SearchSource.remote) {
+      return _RemoteFilesGrid(
+        files: results.remoteFiles,
+        crossAxisCount: crossAxisCount,
+        onFileSelected: onRemoteFileSelected,
+      );
+    }
+
+    // Если фильтр только local, показываем только local
+    if (sourceFilter == SearchSource.local) {
+      return _ResultsGrid(
+        files: results.localFiles,
+        selectedFileId: selectedFileId,
+        onFileSelected: onLocalFileSelected,
+      );
+    }
+
+    // Показываем оба типа
+    return CustomScrollView(
+      slivers: [
+        // Local files section
+        if (showLocal && results.localFiles.isNotEmpty) ...[
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            sliver: SliverToBoxAdapter(
+              child: Row(
+                children: [
+                  Icon(Icons.folder, size: 20, color: theme.colorScheme.primary),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Локальные файлы',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '(${results.localFiles.length})',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.outline,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            sliver: SliverGrid(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: crossAxisCount,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 0.85,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final file = results.localFiles[index];
+                  return _FileCard(
+                    file: file,
+                    isSelected: file.id == selectedFileId,
+                    onTap: () => onLocalFileSelected(file),
+                    onDoubleTap: () => _openLocalFile(context, ref, file.id),
+                  );
+                },
+                childCount: results.localFiles.length,
+              ),
+            ),
+          ),
+        ],
+
+        // Remote files section
+        if (showRemote && results.remoteFiles.isNotEmpty) ...[
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+            sliver: SliverToBoxAdapter(
+              child: Row(
+                children: [
+                  Icon(Icons.cloud, size: 20, color: Colors.purple),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Файлы семьи',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: Colors.purple,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '(${results.remoteFiles.length})',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.outline,
+                    ),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => context.push('/network/files'),
+                    child: const Text('Все файлы'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            sliver: SliverGrid(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: crossAxisCount,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 0.85,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final file = results.remoteFiles[index];
+                  return _RemoteFileCard(
+                    file: file,
+                    onTap: () => onRemoteFileSelected(file),
+                  );
+                },
+                childCount: results.remoteFiles.length,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Future<void> _openLocalFile(BuildContext context, WidgetRef ref, int fileId) async {
+    final fileDetails = await ref.read(fileDetailsProvider(fileId).future);
+    if (fileDetails == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('File not found')),
+        );
+      }
+      return;
+    }
+
+    final folders = await ref.read(foldersNotifierProvider.future);
+    final folder = folders.where((f) => f.id == fileDetails.folderId).firstOrNull;
+
+    if (folder == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Folder not found')),
+        );
+      }
+      return;
+    }
+
+    final path = '${folder.path}/${fileDetails.relativePath}';
+    final fullPath = Platform.isWindows ? path.replaceAll('/', '\\') : path;
+
+    try {
+      if (Platform.isAndroid || Platform.isIOS) {
+        final result = await OpenFilex.open(fullPath);
+        if (result.type != ResultType.done && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Cannot open: ${result.message}')),
+          );
+        }
+      } else if (Platform.isWindows) {
+        await Process.run('cmd', ['/c', 'start', '', fullPath]);
+      } else if (Platform.isMacOS) {
+        await Process.run('open', [fullPath]);
+      } else if (Platform.isLinux) {
+        await Process.run('xdg-open', [fullPath]);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to open: $e')),
+        );
+      }
+    }
+  }
+}
+
+class _RemoteFilesGrid extends StatelessWidget {
+  final List<RemoteFileRecord> files;
+  final int crossAxisCount;
+  final ValueChanged<RemoteFileRecord> onFileSelected;
+
+  const _RemoteFilesGrid({
+    required this.files,
+    required this.crossAxisCount,
+    required this.onFileSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      padding: const EdgeInsets.all(16),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 0.85,
+      ),
+      itemCount: files.length,
+      itemBuilder: (context, index) {
+        final file = files[index];
+        return _RemoteFileCard(
+          file: file,
+          onTap: () => onFileSelected(file),
+        );
+      },
+    );
+  }
+}
+
+class _RemoteFileCard extends StatelessWidget {
+  final RemoteFileRecord file;
+  final VoidCallback onTap;
+
+  const _RemoteFileCard({
+    required this.file,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Thumbnail area
+            Expanded(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Container(
+                    color: _getContentTypeColor(file.contentType).withOpacity(0.1),
+                    child: Icon(
+                      _getContentTypeIcon(file.contentType),
+                      size: 48,
+                      color: _getContentTypeColor(file.contentType),
+                    ),
+                  ),
+                  // Cloud badge
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.purple.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Icon(
+                        Icons.cloud,
+                        size: 14,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Info
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    file.name,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    file.formattedSize,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: colorScheme.outline,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _getContentTypeIcon(ContentType type) {
+    switch (type) {
+      case ContentType.image:
+        return Icons.image;
+      case ContentType.video:
+        return Icons.videocam;
+      case ContentType.audio:
+        return Icons.audiotrack;
+      case ContentType.document:
+        return Icons.description;
+      default:
+        return Icons.insert_drive_file;
+    }
+  }
+
+  Color _getContentTypeColor(ContentType type) {
+    switch (type) {
+      case ContentType.image:
+        return Colors.blue;
+      case ContentType.video:
+        return Colors.red;
+      case ContentType.audio:
+        return Colors.orange;
+      case ContentType.document:
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+}
+
 class _FileCard extends StatelessWidget {
   final FileRecordCompact file;
   final bool isSelected;
@@ -705,6 +1106,7 @@ class _AppDrawer extends ConsumerWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final stats = ref.watch(indexStatsProvider);
+    final isFamilyConfigured = ref.watch(isFamilyConfiguredProvider);
 
     return Drawer(
       child: SafeArea(
@@ -760,6 +1162,39 @@ class _AppDrawer extends ConsumerWidget {
                 context.push('/tags');
               },
             ),
+            
+            const Divider(),
+            
+            // P2P Family
+            ListTile(
+              leading: const Icon(Icons.people),
+              title: const Text('Family Network'),
+              subtitle: const Text('Share with family devices'),
+              onTap: () {
+                Navigator.pop(context);
+                context.push('/family');
+              },
+            ),
+            // Show only when family is configured
+            if (isFamilyConfigured) ...[
+              ListTile(
+                leading: const Icon(Icons.devices),
+                title: const Text('Connected Devices'),
+                onTap: () {
+                  Navigator.pop(context);
+                  context.push('/devices');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.cloud),
+                title: const Text('Family Files'),
+                subtitle: const Text('Files from other devices'),
+                onTap: () {
+                  Navigator.pop(context);
+                  context.push('/network/files');
+                },
+              ),
+            ],
 
             const Spacer(),
             const Divider(),

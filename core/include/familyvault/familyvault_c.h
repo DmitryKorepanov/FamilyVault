@@ -311,6 +311,332 @@ FV_API FVError fv_content_indexer_reindex_all(FVContentIndexer indexer,
 /// Проверить, поддерживается ли MIME тип для извлечения текста
 FV_API int32_t fv_content_indexer_can_extract(FVContentIndexer indexer, const char* mime_type);
 
+// ═══════════════════════════════════════════════════════════
+// Secure Storage
+// ═══════════════════════════════════════════════════════════
+
+typedef struct FVSecureStorage_* FVSecureStorage;
+
+/// Создать SecureStorage
+FV_API FVSecureStorage fv_secure_create(void);
+
+/// Уничтожить SecureStorage
+FV_API void fv_secure_destroy(FVSecureStorage storage);
+
+/// Сохранить бинарные данные
+FV_API FVError fv_secure_store(FVSecureStorage storage, const char* key,
+                                const uint8_t* data, int32_t size);
+
+/// Получить бинарные данные
+/// @return Размер данных или -1 при ошибке. Если out_data=NULL, возвращает только размер.
+FV_API int32_t fv_secure_retrieve(FVSecureStorage storage, const char* key,
+                                   uint8_t* out_data, int32_t max_size);
+
+/// Удалить данные
+FV_API FVError fv_secure_remove(FVSecureStorage storage, const char* key);
+
+/// Проверить существование ключа
+FV_API int32_t fv_secure_exists(FVSecureStorage storage, const char* key);
+
+/// Сохранить строку (convenience)
+FV_API FVError fv_secure_store_string(FVSecureStorage storage, const char* key, const char* value);
+
+/// Получить строку (convenience)
+/// @return JSON строка или nullptr при ошибке. Caller должен освободить через fv_free_string.
+FV_API char* fv_secure_retrieve_string(FVSecureStorage storage, const char* key);
+
+// ═══════════════════════════════════════════════════════════
+// Family Pairing
+// ═══════════════════════════════════════════════════════════
+
+typedef struct FVFamilyPairing_* FVFamilyPairing;
+
+/// Создать FamilyPairing
+/// @param storage SecureStorage для хранения секретов
+FV_API FVFamilyPairing fv_pairing_create(FVSecureStorage storage);
+
+/// Уничтожить FamilyPairing
+FV_API void fv_pairing_destroy(FVFamilyPairing pairing);
+
+/// Проверить, настроена ли семья
+FV_API int32_t fv_pairing_is_configured(FVFamilyPairing pairing);
+
+/// Получить ID устройства
+/// @return UUID строка. Caller должен освободить через fv_free_string.
+FV_API char* fv_pairing_get_device_id(FVFamilyPairing pairing);
+
+/// Получить имя устройства
+/// @return Имя устройства. Caller должен освободить через fv_free_string.
+FV_API char* fv_pairing_get_device_name(FVFamilyPairing pairing);
+
+/// Установить имя устройства
+FV_API void fv_pairing_set_device_name(FVFamilyPairing pairing, const char* name);
+
+/// Получить тип устройства (0=Desktop, 1=Mobile, 2=Tablet)
+FV_API int32_t fv_pairing_get_device_type(FVFamilyPairing pairing);
+
+/// Создать новую семью
+/// @return JSON строка {pin, qrData, expiresAt, createdAt} или nullptr при ошибке.
+///         Caller должен освободить через fv_free_string.
+FV_API char* fv_pairing_create_family(FVFamilyPairing pairing);
+
+/// Сгенерировать новый PIN
+/// @return JSON строка {pin, qrData, expiresAt, createdAt} или nullptr при ошибке.
+FV_API char* fv_pairing_regenerate_pin(FVFamilyPairing pairing);
+
+/// Отменить активную pairing сессию
+FV_API void fv_pairing_cancel(FVFamilyPairing pairing);
+
+/// Есть ли активная pairing сессия
+FV_API int32_t fv_pairing_has_pending(FVFamilyPairing pairing);
+
+/// Присоединиться к семье по PIN
+/// @param pin 6-значный PIN
+/// @param initiator_host IP инициатора (может быть NULL)
+/// @param initiator_port Порт инициатора (0 если не указан)
+/// @return 0=Success, 1=InvalidPin, 2=Expired, 3=RateLimited, 4=NetworkError, 5=AlreadyConfigured
+FV_API int32_t fv_pairing_join_pin(FVFamilyPairing pairing, const char* pin,
+                                    const char* initiator_host, uint16_t initiator_port);
+
+/// Присоединиться к семье по QR
+/// @param qr_data Base64 данные из QR-кода
+/// @return Код результата (см. fv_pairing_join_pin)
+FV_API int32_t fv_pairing_join_qr(FVFamilyPairing pairing, const char* qr_data);
+
+/// Сбросить семейную конфигурацию
+FV_API void fv_pairing_reset(FVFamilyPairing pairing);
+
+/// Получить PSK для TLS (32 байта)
+/// @param out_psk Буфер для PSK (минимум 32 байта)
+/// @return 32 при успехе, 0 если семья не настроена
+FV_API int32_t fv_pairing_derive_psk(FVFamilyPairing pairing, uint8_t* out_psk);
+
+/// Получить PSK Identity (deviceId для TLS)
+/// @return UUID строка. Caller должен освободить через fv_free_string.
+FV_API char* fv_pairing_get_psk_identity(FVFamilyPairing pairing);
+
+/// Запустить pairing сервер
+/// @param port Порт (0 = PAIRING_PORT = 45680)
+/// @return FV_OK при успехе
+FV_API FVError fv_pairing_start_server(FVFamilyPairing pairing, uint16_t port);
+
+/// Остановить pairing сервер
+FV_API void fv_pairing_stop_server(FVFamilyPairing pairing);
+
+/// Проверить, запущен ли pairing сервер
+FV_API int32_t fv_pairing_is_server_running(FVFamilyPairing pairing);
+
+/// Получить порт pairing сервера
+FV_API uint16_t fv_pairing_get_server_port(FVFamilyPairing pairing);
+
+// ═══════════════════════════════════════════════════════════
+// Network Discovery
+// ═══════════════════════════════════════════════════════════
+
+typedef struct FVNetworkDiscovery_* FVNetworkDiscovery;
+
+/// Callback при обнаружении/потере устройства
+/// @param event 0=found, 1=lost, 2=updated
+/// @param device_json JSON DeviceInfo
+typedef void (*FVDeviceCallback)(int32_t event, const char* device_json, void* user_data);
+
+/// Создать NetworkDiscovery
+FV_API FVNetworkDiscovery fv_discovery_create(void);
+
+/// Уничтожить NetworkDiscovery
+FV_API void fv_discovery_destroy(FVNetworkDiscovery discovery);
+
+/// Запустить discovery
+/// @param pairing FamilyPairing для получения deviceId/name/type
+/// @param callback Callback для событий устройств (может быть NULL)
+/// @param user_data User data для callback
+FV_API FVError fv_discovery_start(FVNetworkDiscovery discovery,
+                                   FVFamilyPairing pairing,
+                                   FVDeviceCallback callback, void* user_data);
+
+/// Остановить discovery
+FV_API void fv_discovery_stop(FVNetworkDiscovery discovery);
+
+/// Проверить, запущен ли discovery
+FV_API int32_t fv_discovery_is_running(FVNetworkDiscovery discovery);
+
+/// Получить список найденных устройств
+/// @return JSON array DeviceInfo или nullptr при ошибке
+FV_API char* fv_discovery_get_devices(FVNetworkDiscovery discovery);
+
+/// Получить количество найденных устройств
+FV_API int32_t fv_discovery_get_device_count(FVNetworkDiscovery discovery);
+
+/// Получить устройство по ID
+/// @return JSON DeviceInfo или nullptr если не найдено
+FV_API char* fv_discovery_get_device(FVNetworkDiscovery discovery, const char* device_id);
+
+/// Получить локальные IP адреса этого устройства
+/// @return JSON array строк IP или nullptr при ошибке
+FV_API char* fv_discovery_get_local_ips(void);
+
+// ═══════════════════════════════════════════════════════════
+// Network Manager (P2P координатор)
+// ═══════════════════════════════════════════════════════════
+
+typedef struct FVNetworkManager_* FVNetworkManager;
+
+/// Callback события сети
+/// @param event 0=device_discovered, 1=device_lost, 2=device_connected, 
+///              3=device_disconnected, 4=state_changed, 5=error
+/// @param data_json JSON с данными события
+typedef void (*FVNetworkCallback)(int32_t event, const char* data_json, void* user_data);
+
+/// Создать NetworkManager
+/// @param pairing FamilyPairing для PSK и device info
+FV_API FVNetworkManager fv_network_create(FVFamilyPairing pairing);
+
+/// Уничтожить NetworkManager
+FV_API void fv_network_destroy(FVNetworkManager mgr);
+
+/// Запустить сеть (discovery + server)
+/// @param port TCP порт (0 = авто)
+/// @param callback Callback для событий (может быть NULL)
+/// @param user_data User data для callback
+FV_API FVError fv_network_start(FVNetworkManager mgr, uint16_t port,
+                                 FVNetworkCallback callback, void* user_data);
+
+/// Остановить сеть
+FV_API void fv_network_stop(FVNetworkManager mgr);
+
+/// Проверить состояние (0=stopped, 1=starting, 2=running, 3=stopping, 4=error)
+FV_API int32_t fv_network_get_state(FVNetworkManager mgr);
+
+/// Проверить, запущен ли
+FV_API int32_t fv_network_is_running(FVNetworkManager mgr);
+
+/// Получить порт сервера
+FV_API uint16_t fv_network_get_port(FVNetworkManager mgr);
+
+/// Получить обнаруженные устройства (JSON array)
+FV_API char* fv_network_get_discovered_devices(FVNetworkManager mgr);
+
+/// Получить подключённые устройства (JSON array)
+FV_API char* fv_network_get_connected_devices(FVNetworkManager mgr);
+
+/// Подключиться к устройству по ID
+FV_API FVError fv_network_connect_to_device(FVNetworkManager mgr, const char* device_id);
+
+/// Подключиться к устройству по адресу
+FV_API FVError fv_network_connect_to_address(FVNetworkManager mgr, 
+                                              const char* host, uint16_t port);
+
+/// Отключиться от устройства
+FV_API void fv_network_disconnect_device(FVNetworkManager mgr, const char* device_id);
+
+/// Отключиться от всех
+FV_API void fv_network_disconnect_all(FVNetworkManager mgr);
+
+/// Проверить подключение к устройству
+FV_API int32_t fv_network_is_connected_to(FVNetworkManager mgr, const char* device_id);
+
+/// Получить последнюю ошибку
+FV_API char* fv_network_get_last_error(FVNetworkManager mgr);
+
+/// Установить базу данных для синхронизации индекса
+/// @param db База данных (должна быть инициализирована)
+/// @param device_id ID этого устройства
+FV_API FVError fv_network_set_database(FVNetworkManager mgr, FVDatabase db, const char* device_id);
+
+/// Запросить синхронизацию индекса с устройством
+/// @param device_id ID устройства (должно быть подключено)
+/// @param full_sync true для полной синхронизации
+FV_API FVError fv_network_request_sync(FVNetworkManager mgr, const char* device_id, int32_t full_sync);
+
+/// Получить удалённые файлы (JSON array)
+/// Требует предварительного вызова fv_network_set_database
+FV_API char* fv_network_get_remote_files(FVNetworkManager mgr);
+
+/// Поиск по удалённым файлам (JSON array)
+FV_API char* fv_network_search_remote_files(FVNetworkManager mgr, const char* query, int32_t limit);
+
+/// Получить количество удалённых файлов
+FV_API int64_t fv_network_get_remote_file_count(FVNetworkManager mgr);
+
+// ═══════════════════════════════════════════════════════════
+// File Transfer
+// ═══════════════════════════════════════════════════════════
+
+/// Установить директорию кэша для файлов
+FV_API FVError fv_network_set_cache_dir(FVNetworkManager mgr, const char* cache_dir);
+
+/// Запросить файл с удалённого устройства
+/// @param device_id ID устройства (должно быть подключено)
+/// @param file_id ID файла на удалённом устройстве
+/// @param file_name Имя файла (для сохранения)
+/// @param expected_size Ожидаемый размер файла
+/// @param checksum Контрольная сумма (может быть NULL)
+/// @return request_id для отслеживания, или NULL при ошибке
+FV_API char* fv_network_request_file(FVNetworkManager mgr, const char* device_id,
+                                      int64_t file_id, const char* file_name,
+                                      int64_t expected_size, const char* checksum);
+
+/// Отменить запрос файла
+FV_API void fv_network_cancel_file_request(FVNetworkManager mgr, const char* request_id);
+
+/// Отменить все запросы файлов к устройству
+FV_API void fv_network_cancel_all_file_requests(FVNetworkManager mgr, const char* device_id);
+
+/// Получить активные передачи (JSON array)
+FV_API char* fv_network_get_active_transfers(FVNetworkManager mgr);
+
+/// Получить прогресс передачи (JSON)
+FV_API char* fv_network_get_transfer_progress(FVNetworkManager mgr, const char* request_id);
+
+/// Проверить, есть ли файл в кэше
+/// @param device_id ID устройства-источника
+/// @param file_id ID файла
+/// @param checksum Контрольная сумма (опционально)
+FV_API int32_t fv_network_is_file_cached(FVNetworkManager mgr, const char* device_id, int64_t file_id, const char* checksum);
+
+/// Получить путь к кэшированному файлу
+/// @param device_id ID устройства-источника
+/// @param file_id ID файла
+FV_API char* fv_network_get_cached_path(FVNetworkManager mgr, const char* device_id, int64_t file_id);
+
+/// Очистить кэш файлов
+FV_API void fv_network_clear_cache(FVNetworkManager mgr);
+
+/// Получить размер кэша (в байтах)
+FV_API int64_t fv_network_get_cache_size(FVNetworkManager mgr);
+
+/// Проверить, есть ли активные передачи
+FV_API int32_t fv_network_has_active_transfers(FVNetworkManager mgr);
+
+// ═══════════════════════════════════════════════════════════
+// Index Sync (standalone)
+// ═══════════════════════════════════════════════════════════
+
+typedef struct FVIndexSyncManager_* FVIndexSyncManager;
+
+/// Создать IndexSyncManager
+/// @param db База данных
+/// @param device_id ID этого устройства
+FV_API FVIndexSyncManager fv_sync_create(FVDatabase db, const char* device_id);
+
+/// Уничтожить IndexSyncManager
+FV_API void fv_sync_destroy(FVIndexSyncManager mgr);
+
+/// Получить удалённые файлы (JSON array)
+FV_API char* fv_sync_get_remote_files(FVIndexSyncManager mgr);
+
+/// Получить удалённые файлы с устройства (JSON array)
+FV_API char* fv_sync_get_remote_files_from(FVIndexSyncManager mgr, const char* device_id);
+
+/// Поиск по удалённым файлам (JSON array)
+FV_API char* fv_sync_search_remote(FVIndexSyncManager mgr, const char* query, int32_t limit);
+
+/// Количество удалённых файлов
+FV_API int64_t fv_sync_get_remote_count(FVIndexSyncManager mgr);
+
+/// Проверить, идёт ли синхронизация
+FV_API int32_t fv_sync_is_syncing(FVIndexSyncManager mgr);
+
 #ifdef __cplusplus
 }
 #endif

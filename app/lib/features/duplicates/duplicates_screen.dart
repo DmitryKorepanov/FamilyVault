@@ -59,7 +59,7 @@ class _DuplicatesScreenState extends ConsumerState<DuplicatesScreen>
               padding: EdgeInsets.all(16),
               child: LinearProgressIndicator(),
             ),
-            error: (_, __) => const SizedBox.shrink(),
+            error: (_, _) => const SizedBox.shrink(),
           ),
 
           // Tab content

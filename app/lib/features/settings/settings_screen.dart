@@ -1,8 +1,13 @@
+// ignore_for_file: deprecated_member_use
+
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers/providers.dart';
 import '../../shared/utils/formatters.dart';
+import '../../shared/widgets/android_network_setup.dart';
 
 /// Экран настроек
 class SettingsScreen extends ConsumerWidget {
@@ -74,7 +79,7 @@ class SettingsScreen extends ConsumerWidget {
               title: 'Index Size',
               subtitle: 'Calculating...',
             ),
-            error: (_, __) => _SettingsTile(
+            error: (_, _) => _SettingsTile(
               icon: Icons.storage,
               title: 'Index Size',
               subtitle: 'Error',
@@ -100,6 +105,16 @@ class SettingsScreen extends ConsumerWidget {
           ),
 
           const Divider(),
+
+          // Android P2P section (only on Android)
+          if (Platform.isAndroid) ...[
+            _SectionHeader(title: 'P2P Network (Android)'),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: AndroidNetworkSetup(),
+            ),
+            const Divider(),
+          ],
 
           // About section
           _SectionHeader(title: 'Help'),
@@ -244,6 +259,8 @@ class SettingsScreen extends ConsumerWidget {
         // Get current folders with ALL metadata before deleting
         final indexService = ref.read(indexServiceProvider);
         final folders = await indexService.getFolders();
+        
+        if (!context.mounted) return;
         
         if (folders.isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(

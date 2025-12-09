@@ -267,7 +267,7 @@ class _FileDetailsContent extends ConsumerWidget {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                   ),
-                  error: (_, __) => Text(
+                  error: (_, _) => Text(
                     'Failed to load tags',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: colorScheme.error,

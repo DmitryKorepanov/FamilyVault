@@ -221,7 +221,7 @@ void main() {
       addTearDown(container.dispose);
 
       var callCount = 0;
-      container.listen(searchQueryProvider, (_, __) => callCount++);
+      container.listen(searchQueryProvider, (_, _) => callCount++);
 
       // Initial listen call
       expect(callCount, 0);
@@ -242,7 +242,7 @@ void main() {
       addTearDown(container.dispose);
 
       var callCount = 0;
-      container.listen(indexVersionProvider, (_, __) => callCount++);
+      container.listen(indexVersionProvider, (_, _) => callCount++);
 
       expect(callCount, 0);
 
@@ -258,7 +258,7 @@ void main() {
       addTearDown(container.dispose);
 
       var callCount = 0;
-      container.listen(viewModeProvider, (_, __) => callCount++);
+      container.listen(viewModeProvider, (_, _) => callCount++);
 
       expect(callCount, 0);
 

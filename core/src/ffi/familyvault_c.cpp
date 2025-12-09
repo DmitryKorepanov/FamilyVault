@@ -1,5 +1,6 @@
 // familyvault_c.cpp — реализация C API для FFI
 
+#include "ffi_internal.h"
 #include "familyvault/familyvault_c.h"
 #include "familyvault/core.h"
 #include "familyvault/Database.h"
@@ -25,10 +26,12 @@ using namespace FamilyVault;
 // Thread-local error state for proper C API error handling
 // ═══════════════════════════════════════════════════════════
 
-static thread_local FVError g_lastError = FV_OK;
-static thread_local std::string g_lastErrorMessage;
+// Thread-local error state (shared across ffi_*.cpp files)
+thread_local FVError g_lastError = FV_OK;
+thread_local std::string g_lastErrorMessage;
 
-static void setLastError(FVError error, const std::string& message = "") {
+// Non-static so other ffi_*.cpp files can call these
+void setLastError(FVError error, const std::string& message) {
     g_lastError = error;
     g_lastErrorMessage = message;
     if (error != FV_OK) {
@@ -36,47 +39,7 @@ static void setLastError(FVError error, const std::string& message = "") {
     }
 }
 
-// ═══════════════════════════════════════════════════════════
-// DatabaseHolder - manages Database lifetime with ref-counting
-// ═══════════════════════════════════════════════════════════
-
-/// Wraps Database with reference counting for safe manager lifetime
-class DatabaseHolder {
-public:
-    explicit DatabaseHolder(const std::string& path)
-        : m_database(std::make_shared<Database>(path))
-        , m_refCount(1)  // Start with 1 for the holder itself
-        , m_initialized(false)
-    {}
-
-    std::shared_ptr<Database> getDatabase() const { return m_database; }
-    
-    void addRef() {
-        m_refCount.fetch_add(1, std::memory_order_relaxed);
-    }
-    
-    int release() {
-        return m_refCount.fetch_sub(1, std::memory_order_acq_rel) - 1;
-    }
-    
-    int refCount() const {
-        return m_refCount.load(std::memory_order_relaxed);
-    }
-    
-    void initialize() {
-        if (!m_initialized) {
-            m_database->initialize();
-            m_initialized = true;
-        }
-    }
-    
-    bool isInitialized() const { return m_initialized; }
-    
-private:
-    std::shared_ptr<Database> m_database;
-    std::atomic<int> m_refCount;
-    bool m_initialized;
-};
+// DatabaseHolder is defined in ffi_internal.h
 
 // ═══════════════════════════════════════════════════════════
 // Manager Wrappers - store DatabaseHolder reference for auto-release
@@ -129,7 +92,7 @@ struct DuplicateFinderWrapper {
 // Хелперы
 // ═══════════════════════════════════════════════════════════
 
-static char* alloc_string(const std::string& str) {
+char* alloc_string(const std::string& str) {
     char* result = static_cast<char*>(std::malloc(str.size() + 1));
     if (result) {
         std::strcpy(result, str.c_str());

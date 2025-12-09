@@ -127,3 +127,14 @@ String getFileNameWithoutExtension(String filename) {
   return filename;
 }
 
+/// Статический класс-обёртка для форматтеров
+abstract class Formatters {
+  static String fileSize(int bytes) => formatFileSize(bytes);
+  static String date(DateTime d) => formatDate(d);
+  static String dateTime(DateTime d) => formatDateTime(d);
+  static String fullDate(DateTime d) => formatFullDate(d);
+  static String number(int n) => formatNumber(n);
+  static String compactNumber(int n) => formatCompactNumber(n);
+  static String percent(double v) => formatPercent(v);
+}
+

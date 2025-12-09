@@ -10,9 +10,22 @@ set(CORE_SOURCES
     src/Search/SearchEngine.cpp
     src/Tags/TagManager.cpp
     src/Duplicates/DuplicateFinder.cpp
+    src/Security/SecureStorage.cpp
+    src/Security/FamilyPairing.cpp
+    src/Network/Discovery.cpp
+    src/Network/TlsPsk.cpp
+    src/Network/NetworkProtocol.cpp
+    src/Network/PeerConnection.cpp
+    src/Network/NetworkManager.cpp
+    src/Network/IndexSyncManager.cpp
+    src/Network/RemoteFileAccess.cpp
+    src/Network/PairingServer.cpp
     src/Utils/Types.cpp
     src/Utils/MimeTypeDetector.cpp
     src/ffi/familyvault_c.cpp
+    src/ffi/ffi_secure.cpp
+    src/ffi/ffi_network.cpp
+    src/ffi/ffi_network_manager.cpp
 )
 
 # Text extraction (опционально - требует poppler, libzip, pugixml)
@@ -41,6 +54,20 @@ target_link_libraries(familyvault
         OpenSSL::Crypto
         nlohmann_json::nlohmann_json
 )
+
+# Platform-specific libraries for Security and Network modules
+if(WIN32)
+    target_link_libraries(familyvault PRIVATE advapi32 rpcrt4 ws2_32 iphlpapi)
+elseif(NOT ANDROID)
+    # Linux: uuid library
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(UUID IMPORTED_TARGET uuid)
+        if(UUID_FOUND)
+            target_link_libraries(familyvault PRIVATE PkgConfig::UUID)
+        endif()
+    endif()
+endif()
 
 # spdlog: header-only on Android (compiled lib uses glibc-specific functions)
 if(ANDROID)
@@ -129,6 +156,16 @@ if(WIN32)
             )
         endif()
     endforeach()
+    
+    # Copy MSVCP140_ATOMIC_WAIT.dll (needed for std::mutex in C++20)
+    if(EXISTS "C:/Windows/System32/MSVCP140_ATOMIC_WAIT.dll")
+        add_custom_command(TARGET familyvault POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "C:/Windows/System32/MSVCP140_ATOMIC_WAIT.dll"
+                "${FLUTTER_WINDOWS_DIR}/"
+            COMMENT "Copying MSVCP140_ATOMIC_WAIT.dll to app/windows/"
+        )
+    endif()
 elseif(ANDROID)
     # Android: copy to jniLibs
     set(ANDROID_JNILIBS_DIR "${CMAKE_SOURCE_DIR}/app/android/app/src/main/jniLibs/${ANDROID_ABI}")

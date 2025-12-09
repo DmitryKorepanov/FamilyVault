@@ -83,6 +83,14 @@ class NativeBridge {
   Pointer<Void>? _tagManager;
   Pointer<Void>? _duplicateFinder;
   Pointer<Void>? _contentIndexer;
+  Pointer<Void>? _secureStorage;
+  Pointer<Void>? _familyPairing;
+  Pointer<Void>? _networkDiscovery;
+  Pointer<Void>? _networkManager;
+  Pointer<Void>? _indexSyncManager;
+
+  // Network callback (kept alive while network is running)
+  NativeCallable<Void Function(Int32, Pointer<Utf8>, Pointer<Void>)>? _networkCallback;
 
   // Database path (needed for background isolate operations)
   String? _databasePath;
@@ -164,6 +172,89 @@ class NativeBridge {
   late final _FvContentIndexerCanExtract _fvContentIndexerCanExtract;
   late final _FvContentIndexerSetMaxTextSizeKB _fvContentIndexerSetMaxTextSizeKB;
   late final _FvContentIndexerGetMaxTextSizeKB _fvContentIndexerGetMaxTextSizeKB;
+
+  // Secure Storage
+  late final _FvSecureCreate _fvSecureCreate;
+  late final _FvSecureDestroy _fvSecureDestroy;
+  late final _FvSecureStoreString _fvSecureStoreString;
+  late final _FvSecureRetrieveString _fvSecureRetrieveString;
+  late final _FvSecureRemove _fvSecureRemove;
+  late final _FvSecureExists _fvSecureExists;
+
+  // Family Pairing
+  late final _FvPairingCreate _fvPairingCreate;
+  late final _FvPairingDestroy _fvPairingDestroy;
+  late final _FvPairingIsConfigured _fvPairingIsConfigured;
+  late final _FvPairingGetDeviceId _fvPairingGetDeviceId;
+  late final _FvPairingGetDeviceName _fvPairingGetDeviceName;
+  late final _FvPairingSetDeviceName _fvPairingSetDeviceName;
+  late final _FvPairingGetDeviceType _fvPairingGetDeviceType;
+  late final _FvPairingCreateFamily _fvPairingCreateFamily;
+  late final _FvPairingRegeneratePin _fvPairingRegeneratePin;
+  late final _FvPairingCancel _fvPairingCancel;
+  late final _FvPairingHasPending _fvPairingHasPending;
+  late final _FvPairingJoinPin _fvPairingJoinPin;
+  late final _FvPairingJoinQr _fvPairingJoinQr;
+  late final _FvPairingReset _fvPairingReset;
+  late final _FvPairingStartServer _fvPairingStartServer;
+  late final _FvPairingStopServer _fvPairingStopServer;
+  late final _FvPairingIsServerRunning _fvPairingIsServerRunning;
+  late final _FvPairingGetServerPort _fvPairingGetServerPort;
+
+  // Network Discovery
+  late final _FvDiscoveryCreate _fvDiscoveryCreate;
+  late final _FvDiscoveryDestroy _fvDiscoveryDestroy;
+  late final _FvDiscoveryStart _fvDiscoveryStart;
+  late final _FvDiscoveryStop _fvDiscoveryStop;
+  late final _FvDiscoveryIsRunning _fvDiscoveryIsRunning;
+  late final _FvDiscoveryGetDevices _fvDiscoveryGetDevices;
+  late final _FvDiscoveryGetDeviceCount _fvDiscoveryGetDeviceCount;
+  late final _FvDiscoveryGetDevice _fvDiscoveryGetDevice;
+  late final _FvDiscoveryGetLocalIps _fvDiscoveryGetLocalIps;
+
+  // Network Manager
+  late final _FvNetworkCreate _fvNetworkCreate;
+  late final _FvNetworkDestroy _fvNetworkDestroy;
+  late final _FvNetworkStart _fvNetworkStart;
+  late final _FvNetworkStop _fvNetworkStop;
+  late final _FvNetworkGetState _fvNetworkGetState;
+  late final _FvNetworkIsRunning _fvNetworkIsRunning;
+  late final _FvNetworkGetPort _fvNetworkGetPort;
+  late final _FvNetworkGetDiscoveredDevices _fvNetworkGetDiscoveredDevices;
+  late final _FvNetworkGetConnectedDevices _fvNetworkGetConnectedDevices;
+  late final _FvNetworkConnectToDevice _fvNetworkConnectToDevice;
+  late final _FvNetworkConnectToAddress _fvNetworkConnectToAddress;
+  late final _FvNetworkDisconnectDevice _fvNetworkDisconnectDevice;
+  late final _FvNetworkDisconnectAll _fvNetworkDisconnectAll;
+  late final _FvNetworkIsConnectedTo _fvNetworkIsConnectedTo;
+  late final _FvNetworkGetLastError _fvNetworkGetLastError;
+  late final _FvNetworkSetDatabase _fvNetworkSetDatabase;
+  late final _FvNetworkRequestSync _fvNetworkRequestSync;
+  late final _FvNetworkGetRemoteFiles _fvNetworkGetRemoteFiles;
+  late final _FvNetworkSearchRemoteFiles _fvNetworkSearchRemoteFiles;
+  late final _FvNetworkGetRemoteFileCount _fvNetworkGetRemoteFileCount;
+  
+  // File Transfer
+  late final _FvNetworkSetCacheDir _fvNetworkSetCacheDir;
+  late final _FvNetworkRequestFile _fvNetworkRequestFile;
+  late final _FvNetworkCancelFileRequest _fvNetworkCancelFileRequest;
+  late final _FvNetworkCancelAllFileRequests _fvNetworkCancelAllFileRequests;
+  late final _FvNetworkGetActiveTransfers _fvNetworkGetActiveTransfers;
+  late final _FvNetworkGetTransferProgress _fvNetworkGetTransferProgress;
+  late final _FvNetworkIsFileCached _fvNetworkIsFileCached;
+  late final _FvNetworkGetCachedPath _fvNetworkGetCachedPath;
+  late final _FvNetworkClearCache _fvNetworkClearCache;
+  late final _FvNetworkGetCacheSize _fvNetworkGetCacheSize;
+  late final _FvNetworkHasActiveTransfers _fvNetworkHasActiveTransfers;
+
+  // Index Sync Manager
+  late final _FvSyncCreate _fvSyncCreate;
+  late final _FvSyncDestroy _fvSyncDestroy;
+  late final _FvSyncGetRemoteFiles _fvSyncGetRemoteFiles;
+  late final _FvSyncGetRemoteFilesFrom _fvSyncGetRemoteFilesFrom;
+  late final _FvSyncSearchRemote _fvSyncSearchRemote;
+  late final _FvSyncGetRemoteCount _fvSyncGetRemoteCount;
+  late final _FvSyncIsSyncing _fvSyncIsSyncing;
 
   NativeBridge._() {
     _lib = _loadLibrary();
@@ -543,6 +634,255 @@ class NativeBridge {
     _fvContentIndexerGetMaxTextSizeKB = _lib
         .lookup<NativeFunction<Int32 Function(Pointer<Void>)>>(
             'fv_content_indexer_get_max_text_size_kb')
+        .asFunction();
+
+    // Secure Storage
+    _fvSecureCreate = _lib
+        .lookup<NativeFunction<Pointer<Void> Function()>>('fv_secure_create')
+        .asFunction();
+
+    _fvSecureDestroy = _lib
+        .lookup<NativeFunction<Void Function(Pointer<Void>)>>('fv_secure_destroy')
+        .asFunction();
+
+    _fvSecureStoreString = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>, Pointer<Utf8>, Pointer<Utf8>)>>(
+            'fv_secure_store_string')
+        .asFunction();
+
+    _fvSecureRetrieveString = _lib
+        .lookup<NativeFunction<Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>)>>(
+            'fv_secure_retrieve_string')
+        .asFunction();
+
+    _fvSecureRemove = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>, Pointer<Utf8>)>>(
+            'fv_secure_remove')
+        .asFunction();
+
+    _fvSecureExists = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>, Pointer<Utf8>)>>(
+            'fv_secure_exists')
+        .asFunction();
+
+    // Family Pairing
+    _fvPairingCreate = _lib
+        .lookup<NativeFunction<Pointer<Void> Function(Pointer<Void>)>>('fv_pairing_create')
+        .asFunction();
+
+    _fvPairingDestroy = _lib
+        .lookup<NativeFunction<Void Function(Pointer<Void>)>>('fv_pairing_destroy')
+        .asFunction();
+
+    _fvPairingIsConfigured = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>)>>('fv_pairing_is_configured')
+        .asFunction();
+
+    _fvPairingGetDeviceId = _lib
+        .lookup<NativeFunction<Pointer<Utf8> Function(Pointer<Void>)>>('fv_pairing_get_device_id')
+        .asFunction();
+
+    _fvPairingGetDeviceName = _lib
+        .lookup<NativeFunction<Pointer<Utf8> Function(Pointer<Void>)>>('fv_pairing_get_device_name')
+        .asFunction();
+
+    _fvPairingSetDeviceName = _lib
+        .lookup<NativeFunction<Void Function(Pointer<Void>, Pointer<Utf8>)>>(
+            'fv_pairing_set_device_name')
+        .asFunction();
+
+    _fvPairingGetDeviceType = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>)>>('fv_pairing_get_device_type')
+        .asFunction();
+
+    _fvPairingCreateFamily = _lib
+        .lookup<NativeFunction<Pointer<Utf8> Function(Pointer<Void>)>>('fv_pairing_create_family')
+        .asFunction();
+
+    _fvPairingRegeneratePin = _lib
+        .lookup<NativeFunction<Pointer<Utf8> Function(Pointer<Void>)>>('fv_pairing_regenerate_pin')
+        .asFunction();
+
+    _fvPairingCancel = _lib
+        .lookup<NativeFunction<Void Function(Pointer<Void>)>>('fv_pairing_cancel')
+        .asFunction();
+
+    _fvPairingHasPending = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>)>>('fv_pairing_has_pending')
+        .asFunction();
+
+    _fvPairingJoinPin = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>, Pointer<Utf8>, Pointer<Utf8>, Uint16)>>(
+            'fv_pairing_join_pin')
+        .asFunction();
+
+    _fvPairingJoinQr = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>, Pointer<Utf8>)>>('fv_pairing_join_qr')
+        .asFunction();
+
+    _fvPairingReset = _lib
+        .lookup<NativeFunction<Void Function(Pointer<Void>)>>('fv_pairing_reset')
+        .asFunction();
+    _fvPairingStartServer = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>, Uint16)>>('fv_pairing_start_server')
+        .asFunction();
+    _fvPairingStopServer = _lib
+        .lookup<NativeFunction<Void Function(Pointer<Void>)>>('fv_pairing_stop_server')
+        .asFunction();
+    _fvPairingIsServerRunning = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>)>>('fv_pairing_is_server_running')
+        .asFunction();
+    _fvPairingGetServerPort = _lib
+        .lookup<NativeFunction<Uint16 Function(Pointer<Void>)>>('fv_pairing_get_server_port')
+        .asFunction();
+
+    // Network Discovery
+    _fvDiscoveryCreate = _lib
+        .lookup<NativeFunction<Pointer<Void> Function()>>('fv_discovery_create')
+        .asFunction();
+    _fvDiscoveryDestroy = _lib
+        .lookup<NativeFunction<Void Function(Pointer<Void>)>>('fv_discovery_destroy')
+        .asFunction();
+    _fvDiscoveryStart = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>, Pointer<Void>, Pointer<NativeFunction<Void Function(Int32, Pointer<Utf8>, Pointer<Void>)>>, Pointer<Void>)>>('fv_discovery_start')
+        .asFunction();
+    _fvDiscoveryStop = _lib
+        .lookup<NativeFunction<Void Function(Pointer<Void>)>>('fv_discovery_stop')
+        .asFunction();
+    _fvDiscoveryIsRunning = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>)>>('fv_discovery_is_running')
+        .asFunction();
+    _fvDiscoveryGetDevices = _lib
+        .lookup<NativeFunction<Pointer<Utf8> Function(Pointer<Void>)>>('fv_discovery_get_devices')
+        .asFunction();
+    _fvDiscoveryGetDeviceCount = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>)>>('fv_discovery_get_device_count')
+        .asFunction();
+    _fvDiscoveryGetDevice = _lib
+        .lookup<NativeFunction<Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>)>>('fv_discovery_get_device')
+        .asFunction();
+    _fvDiscoveryGetLocalIps = _lib
+        .lookup<NativeFunction<Pointer<Utf8> Function()>>('fv_discovery_get_local_ips')
+        .asFunction();
+
+    // Network Manager
+    _fvNetworkCreate = _lib
+        .lookup<NativeFunction<Pointer<Void> Function(Pointer<Void>)>>('fv_network_create')
+        .asFunction();
+    _fvNetworkDestroy = _lib
+        .lookup<NativeFunction<Void Function(Pointer<Void>)>>('fv_network_destroy')
+        .asFunction();
+    _fvNetworkStart = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>, Uint16, Pointer<NativeFunction<Void Function(Int32, Pointer<Utf8>, Pointer<Void>)>>, Pointer<Void>)>>('fv_network_start')
+        .asFunction();
+    _fvNetworkStop = _lib
+        .lookup<NativeFunction<Void Function(Pointer<Void>)>>('fv_network_stop')
+        .asFunction();
+    _fvNetworkGetState = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>)>>('fv_network_get_state')
+        .asFunction();
+    _fvNetworkIsRunning = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>)>>('fv_network_is_running')
+        .asFunction();
+    _fvNetworkGetPort = _lib
+        .lookup<NativeFunction<Uint16 Function(Pointer<Void>)>>('fv_network_get_port')
+        .asFunction();
+    _fvNetworkGetDiscoveredDevices = _lib
+        .lookup<NativeFunction<Pointer<Utf8> Function(Pointer<Void>)>>('fv_network_get_discovered_devices')
+        .asFunction();
+    _fvNetworkGetConnectedDevices = _lib
+        .lookup<NativeFunction<Pointer<Utf8> Function(Pointer<Void>)>>('fv_network_get_connected_devices')
+        .asFunction();
+    _fvNetworkConnectToDevice = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>, Pointer<Utf8>)>>('fv_network_connect_to_device')
+        .asFunction();
+    _fvNetworkConnectToAddress = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>, Pointer<Utf8>, Uint16)>>('fv_network_connect_to_address')
+        .asFunction();
+    _fvNetworkDisconnectDevice = _lib
+        .lookup<NativeFunction<Void Function(Pointer<Void>, Pointer<Utf8>)>>('fv_network_disconnect_device')
+        .asFunction();
+    _fvNetworkDisconnectAll = _lib
+        .lookup<NativeFunction<Void Function(Pointer<Void>)>>('fv_network_disconnect_all')
+        .asFunction();
+    _fvNetworkIsConnectedTo = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>, Pointer<Utf8>)>>('fv_network_is_connected_to')
+        .asFunction();
+    _fvNetworkGetLastError = _lib
+        .lookup<NativeFunction<Pointer<Utf8> Function(Pointer<Void>)>>('fv_network_get_last_error')
+        .asFunction();
+    _fvNetworkSetDatabase = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>, Pointer<Void>, Pointer<Utf8>)>>('fv_network_set_database')
+        .asFunction();
+    _fvNetworkRequestSync = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>, Pointer<Utf8>, Int32)>>('fv_network_request_sync')
+        .asFunction();
+    _fvNetworkGetRemoteFiles = _lib
+        .lookup<NativeFunction<Pointer<Utf8> Function(Pointer<Void>)>>('fv_network_get_remote_files')
+        .asFunction();
+    _fvNetworkSearchRemoteFiles = _lib
+        .lookup<NativeFunction<Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>, Int32)>>('fv_network_search_remote_files')
+        .asFunction();
+    _fvNetworkGetRemoteFileCount = _lib
+        .lookup<NativeFunction<Int64 Function(Pointer<Void>)>>('fv_network_get_remote_file_count')
+        .asFunction();
+    
+    // File Transfer
+    _fvNetworkSetCacheDir = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>, Pointer<Utf8>)>>('fv_network_set_cache_dir')
+        .asFunction();
+    _fvNetworkRequestFile = _lib
+        .lookup<NativeFunction<Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>, Int64, Pointer<Utf8>, Int64, Pointer<Utf8>)>>('fv_network_request_file')
+        .asFunction();
+    _fvNetworkCancelFileRequest = _lib
+        .lookup<NativeFunction<Void Function(Pointer<Void>, Pointer<Utf8>)>>('fv_network_cancel_file_request')
+        .asFunction();
+    _fvNetworkCancelAllFileRequests = _lib
+        .lookup<NativeFunction<Void Function(Pointer<Void>, Pointer<Utf8>)>>('fv_network_cancel_all_file_requests')
+        .asFunction();
+    _fvNetworkGetActiveTransfers = _lib
+        .lookup<NativeFunction<Pointer<Utf8> Function(Pointer<Void>)>>('fv_network_get_active_transfers')
+        .asFunction();
+    _fvNetworkGetTransferProgress = _lib
+        .lookup<NativeFunction<Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>)>>('fv_network_get_transfer_progress')
+        .asFunction();
+    _fvNetworkIsFileCached = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>, Pointer<Utf8>, Int64, Pointer<Utf8>)>>('fv_network_is_file_cached')
+        .asFunction();
+    _fvNetworkGetCachedPath = _lib
+        .lookup<NativeFunction<Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>, Int64)>>('fv_network_get_cached_path')
+        .asFunction();
+    _fvNetworkClearCache = _lib
+        .lookup<NativeFunction<Void Function(Pointer<Void>)>>('fv_network_clear_cache')
+        .asFunction();
+    _fvNetworkGetCacheSize = _lib
+        .lookup<NativeFunction<Int64 Function(Pointer<Void>)>>('fv_network_get_cache_size')
+        .asFunction();
+    _fvNetworkHasActiveTransfers = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>)>>('fv_network_has_active_transfers')
+        .asFunction();
+
+    // Index Sync Manager
+    _fvSyncCreate = _lib
+        .lookup<NativeFunction<Pointer<Void> Function(Pointer<Void>, Pointer<Utf8>)>>('fv_sync_create')
+        .asFunction();
+    _fvSyncDestroy = _lib
+        .lookup<NativeFunction<Void Function(Pointer<Void>)>>('fv_sync_destroy')
+        .asFunction();
+    _fvSyncGetRemoteFiles = _lib
+        .lookup<NativeFunction<Pointer<Utf8> Function(Pointer<Void>)>>('fv_sync_get_remote_files')
+        .asFunction();
+    _fvSyncGetRemoteFilesFrom = _lib
+        .lookup<NativeFunction<Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>)>>('fv_sync_get_remote_files_from')
+        .asFunction();
+    _fvSyncSearchRemote = _lib
+        .lookup<NativeFunction<Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>, Int32)>>('fv_sync_search_remote')
+        .asFunction();
+    _fvSyncGetRemoteCount = _lib
+        .lookup<NativeFunction<Int64 Function(Pointer<Void>)>>('fv_sync_get_remote_count')
+        .asFunction();
+    _fvSyncIsSyncing = _lib
+        .lookup<NativeFunction<Int32 Function(Pointer<Void>)>>('fv_sync_is_syncing')
         .asFunction();
   }
 
@@ -970,6 +1310,12 @@ class NativeBridge {
     _checkError(error, 'Failed to set file visibility');
   }
 
+  void _ensureDatabase() {
+    if (_database == null) {
+      throw StateError('Database not initialized. Call initDatabase() first.');
+    }
+  }
+
   void _ensureIndexManager() {
     if (_indexManager == null) {
       throw StateError('Database not initialized. Call initDatabase() first.');
@@ -1368,6 +1714,901 @@ class NativeBridge {
       throw StateError('Database not initialized. Call initDatabase() first.');
     }
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // Family Pairing
+  // ═══════════════════════════════════════════════════════════
+
+  /// Инициализировать SecureStorage и FamilyPairing
+  void initPairing() {
+    if (_familyPairing != null) return;
+
+    _secureStorage = _fvSecureCreate();
+    if (_secureStorage == nullptr) {
+      _checkLastError('Failed to create secure storage');
+    }
+
+    _familyPairing = _fvPairingCreate(_secureStorage!);
+    if (_familyPairing == nullptr) {
+      _checkLastError('Failed to create family pairing');
+    }
+  }
+
+  /// Закрыть FamilyPairing (вызывается при закрытии приложения)
+  void closePairing() {
+    if (_familyPairing != null) {
+      _fvPairingDestroy(_familyPairing!);
+      _familyPairing = null;
+    }
+    if (_secureStorage != null) {
+      _fvSecureDestroy(_secureStorage!);
+      _secureStorage = null;
+    }
+  }
+
+  /// Проверить, настроена ли семья
+  bool isFamilyConfigured() {
+    _ensurePairing();
+    return _fvPairingIsConfigured(_familyPairing!) != 0;
+  }
+
+  /// Получить ID устройства
+  String getDeviceId() {
+    _ensurePairing();
+    final ptr = _fvPairingGetDeviceId(_familyPairing!);
+    return _readAndFreeJsonStringOrThrow(ptr, 'Failed to get device ID');
+  }
+
+  /// Получить имя устройства
+  String getDeviceName() {
+    _ensurePairing();
+    final ptr = _fvPairingGetDeviceName(_familyPairing!);
+    return _readAndFreeJsonStringOrThrow(ptr, 'Failed to get device name');
+  }
+
+  /// Установить имя устройства
+  void setDeviceName(String name) {
+    _ensurePairing();
+    final namePtr = name.toNativeUtf8();
+    try {
+      _fvPairingSetDeviceName(_familyPairing!, namePtr);
+    } finally {
+      calloc.free(namePtr);
+    }
+  }
+
+  /// Получить тип устройства
+  DeviceType getDeviceType() {
+    _ensurePairing();
+    final typeInt = _fvPairingGetDeviceType(_familyPairing!);
+    return DeviceType.fromValue(typeInt);
+  }
+
+  /// Создать новую семью
+  /// Возвращает PairingInfo с PIN и QR данными
+  PairingInfo? createFamily() {
+    _ensurePairing();
+    final ptr = _fvPairingCreateFamily(_familyPairing!);
+    final json = _readAndFreeString(ptr);
+    if (json.isEmpty) {
+      _checkLastError('Failed to create family');
+      return null;
+    }
+    return PairingInfo.fromJson(jsonDecode(json) as Map<String, dynamic>);
+  }
+
+  /// Сгенерировать новый PIN
+  PairingInfo? regeneratePin() {
+    _ensurePairing();
+    final ptr = _fvPairingRegeneratePin(_familyPairing!);
+    final json = _readAndFreeString(ptr);
+    if (json.isEmpty) {
+      _checkLastError('Failed to regenerate PIN');
+      return null;
+    }
+    return PairingInfo.fromJson(jsonDecode(json) as Map<String, dynamic>);
+  }
+
+  /// Отменить активную pairing сессию
+  void cancelPairing() {
+    _ensurePairing();
+    _fvPairingCancel(_familyPairing!);
+  }
+
+  /// Есть ли активная pairing сессия
+  bool hasPendingPairing() {
+    _ensurePairing();
+    return _fvPairingHasPending(_familyPairing!) != 0;
+  }
+
+  /// Присоединиться к семье по PIN
+  JoinResult joinFamilyByPin(String pin, {String? host, int port = 0}) {
+    _ensurePairing();
+    final pinPtr = pin.toNativeUtf8();
+    final hostPtr = (host ?? '').toNativeUtf8();
+    try {
+      final result = _fvPairingJoinPin(_familyPairing!, pinPtr, hostPtr, port);
+      return JoinResult.fromValue(result);
+    } finally {
+      calloc.free(pinPtr);
+      calloc.free(hostPtr);
+    }
+  }
+
+  /// Присоединиться к семье по QR
+  JoinResult joinFamilyByQR(String qrData) {
+    _ensurePairing();
+    final qrPtr = qrData.toNativeUtf8();
+    try {
+      final result = _fvPairingJoinQr(_familyPairing!, qrPtr);
+      return JoinResult.fromValue(result);
+    } finally {
+      calloc.free(qrPtr);
+    }
+  }
+
+  /// Сбросить семейную конфигурацию
+  void resetFamily() {
+    _ensurePairing();
+    _fvPairingReset(_familyPairing!);
+  }
+
+  /// Запустить pairing сервер (для приёма входящих подключений)
+  /// @param port Порт (0 = использовать порт по умолчанию 45680)
+  void startPairingServer({int port = 0}) {
+    _ensurePairing();
+    final result = _fvPairingStartServer(_familyPairing!, port);
+    if (result != 0) {
+      throw NativeException(FVError.fromValue(result), 'Failed to start pairing server');
+    }
+  }
+
+  /// Остановить pairing сервер
+  void stopPairingServer() {
+    _ensurePairing();
+    _fvPairingStopServer(_familyPairing!);
+  }
+
+  /// Проверить, запущен ли pairing сервер
+  bool isPairingServerRunning() {
+    _ensurePairing();
+    return _fvPairingIsServerRunning(_familyPairing!) != 0;
+  }
+
+  /// Получить порт pairing сервера
+  int getPairingServerPort() {
+    _ensurePairing();
+    return _fvPairingGetServerPort(_familyPairing!);
+  }
+
+  /// Получить информацию о текущем устройстве
+  DeviceInfo getThisDeviceInfo() {
+    _ensurePairing();
+    return DeviceInfo(
+      deviceId: getDeviceId(),
+      deviceName: getDeviceName(),
+      deviceType: getDeviceType(),
+      fileCount: isInitialized ? getStats().totalFiles : 0,
+    );
+  }
+
+  void _ensurePairing() {
+    if (_familyPairing == null) {
+      throw StateError('Pairing not initialized. Call initPairing() first.');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // Secure Storage
+  // ═══════════════════════════════════════════════════════════
+
+  void _ensureSecureStorage() {
+    if (_secureStorage == null) {
+      throw StateError('SecureStorage not initialized. Call initPairing() first.');
+    }
+  }
+
+  /// Сохранить строку в защищённое хранилище
+  void secureStore(String key, String value) {
+    _ensureSecureStorage();
+    final keyPtr = key.toNativeUtf8();
+    final valuePtr = value.toNativeUtf8();
+    try {
+      final error = _fvSecureStoreString(_secureStorage!, keyPtr, valuePtr);
+      _checkError(error, 'Failed to store secure value');
+    } finally {
+      calloc.free(keyPtr);
+      calloc.free(valuePtr);
+    }
+  }
+
+  /// Получить строку из защищённого хранилища
+  String? secureRetrieve(String key) {
+    _ensureSecureStorage();
+    final keyPtr = key.toNativeUtf8();
+    try {
+      final ptr = _fvSecureRetrieveString(_secureStorage!, keyPtr);
+      if (ptr == nullptr) return null;
+      final value = ptr.toDartString();
+      _fvFreeString(ptr);
+      return value.isEmpty ? null : value;
+    } finally {
+      calloc.free(keyPtr);
+    }
+  }
+
+  /// Удалить значение из защищённого хранилища
+  void secureRemove(String key) {
+    _ensureSecureStorage();
+    final keyPtr = key.toNativeUtf8();
+    try {
+      _fvSecureRemove(_secureStorage!, keyPtr);
+    } finally {
+      calloc.free(keyPtr);
+    }
+  }
+
+  /// Проверить наличие ключа в защищённом хранилище
+  bool secureExists(String key) {
+    _ensureSecureStorage();
+    final keyPtr = key.toNativeUtf8();
+    try {
+      return _fvSecureExists(_secureStorage!, keyPtr) != 0;
+    } finally {
+      calloc.free(keyPtr);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // Network Discovery
+  // ═══════════════════════════════════════════════════════════
+
+  /// Запустить обнаружение устройств в сети
+  void startDiscovery() {
+    _ensurePairing();
+    
+    // Создаём discovery если не существует
+    _networkDiscovery ??= _fvDiscoveryCreate();
+    if (_networkDiscovery == null || _networkDiscovery == nullptr) {
+      _checkLastError('Failed to create network discovery');
+    }
+
+    final error = _fvDiscoveryStart(
+      _networkDiscovery!,
+      _familyPairing!,
+      nullptr, // No callback - use polling instead
+      nullptr,
+    );
+    if (error != 0) {
+      _checkLastError('Failed to start discovery');
+    }
+  }
+
+  /// Остановить обнаружение устройств
+  void stopDiscovery() {
+    if (_networkDiscovery != null && _networkDiscovery != nullptr) {
+      _fvDiscoveryStop(_networkDiscovery!);
+    }
+  }
+
+  /// Проверить, запущен ли discovery
+  bool isDiscoveryRunning() {
+    if (_networkDiscovery == null || _networkDiscovery == nullptr) {
+      return false;
+    }
+    return _fvDiscoveryIsRunning(_networkDiscovery!) != 0;
+  }
+
+  /// Получить список обнаруженных устройств
+  List<DeviceInfo> getDiscoveredDevices() {
+    if (_networkDiscovery == null || _networkDiscovery == nullptr) {
+      return [];
+    }
+    
+    final ptr = _fvDiscoveryGetDevices(_networkDiscovery!);
+    if (ptr == nullptr) {
+      return [];
+    }
+    
+    final jsonStr = ptr.toDartString();
+    _fvFreeString(ptr);
+    
+    if (jsonStr.isEmpty || jsonStr == '[]') {
+      return [];
+    }
+    
+    final List<dynamic> jsonList = jsonDecode(jsonStr);
+    return jsonList.map((j) => DeviceInfo.fromJson(j)).toList();
+  }
+
+  /// Получить количество обнаруженных устройств
+  int getDiscoveredDeviceCount() {
+    if (_networkDiscovery == null || _networkDiscovery == nullptr) {
+      return 0;
+    }
+    return _fvDiscoveryGetDeviceCount(_networkDiscovery!);
+  }
+
+  /// Получить устройство по ID
+  DeviceInfo? getDiscoveredDevice(String deviceId) {
+    if (_networkDiscovery == null || _networkDiscovery == nullptr) {
+      return null;
+    }
+    
+    final deviceIdPtr = deviceId.toNativeUtf8();
+    try {
+      final ptr = _fvDiscoveryGetDevice(_networkDiscovery!, deviceIdPtr);
+      if (ptr == nullptr) {
+        return null;
+      }
+      
+      final jsonStr = ptr.toDartString();
+      _fvFreeString(ptr);
+      
+      if (jsonStr.isEmpty) {
+        return null;
+      }
+      
+      return DeviceInfo.fromJson(jsonDecode(jsonStr));
+    } finally {
+      calloc.free(deviceIdPtr);
+    }
+  }
+
+  /// Получить локальные IP адреса этого устройства
+  List<String> getLocalIpAddresses() {
+    final ptr = _fvDiscoveryGetLocalIps();
+    if (ptr == nullptr) {
+      return [];
+    }
+    
+    final jsonStr = ptr.toDartString();
+    _fvFreeString(ptr);
+    
+    if (jsonStr.isEmpty || jsonStr == '[]') {
+      return [];
+    }
+    
+    final List<dynamic> jsonList = jsonDecode(jsonStr);
+    return jsonList.cast<String>();
+  }
+
+  /// Уничтожить discovery (вызывается при закрытии приложения)
+  void disposeDiscovery() {
+    if (_networkDiscovery != null && _networkDiscovery != nullptr) {
+      _fvDiscoveryStop(_networkDiscovery!);
+      _fvDiscoveryDestroy(_networkDiscovery!);
+      _networkDiscovery = null;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // Network Manager
+  // ═══════════════════════════════════════════════════════════
+
+  /// Инициализировать NetworkManager
+  void initNetworkManager() {
+    if (_networkManager != null) return;
+    _ensurePairing();
+
+    _networkManager = _fvNetworkCreate(_familyPairing!);
+    if (_networkManager == nullptr) {
+      _checkLastError('Failed to create network manager');
+    }
+  }
+
+  void _ensureNetworkManager() {
+    if (_networkManager == null) {
+      initNetworkManager();
+    }
+  }
+
+  /// Запустить P2P сеть
+  /// @param port TCP порт (0 = авто)
+  /// @param onEvent Callback для событий сети (event, jsonData)
+  void startNetwork({
+    int port = 0,
+    void Function(int event, String jsonData)? onEvent,
+  }) {
+    _ensureNetworkManager();
+    
+    // Cleanup previous callback if any
+    _networkCallback?.close();
+    _networkCallback = null;
+    
+    Pointer<NativeFunction<Void Function(Int32, Pointer<Utf8>, Pointer<Void>)>> callbackPtr = nullptr;
+    
+    if (onEvent != null) {
+      _networkCallback = NativeCallable<Void Function(Int32, Pointer<Utf8>, Pointer<Void>)>.listener(
+        (int event, Pointer<Utf8> dataPtr, Pointer<Void> userData) {
+          // Read string first, then free it (native allocates with strdup)
+          final jsonData = dataPtr == nullptr ? '{}' : dataPtr.toDartString();
+          if (dataPtr != nullptr) {
+            _fvFreeString(dataPtr);  // CRITICAL: free heap-allocated event data
+          }
+          onEvent(event, jsonData);
+        },
+      );
+      callbackPtr = _networkCallback!.nativeFunction;
+    }
+    
+    final error = _fvNetworkStart(_networkManager!, port, callbackPtr, nullptr);
+    _checkError(error, 'Failed to start network');
+  }
+
+  /// Остановить P2P сеть
+  void stopNetwork() {
+    if (_networkManager != null && _networkManager != nullptr) {
+      _fvNetworkStop(_networkManager!);
+    }
+    // Cleanup callback
+    _networkCallback?.close();
+    _networkCallback = null;
+  }
+
+  /// Проверить, запущена ли сеть
+  bool isNetworkRunning() {
+    if (_networkManager == null || _networkManager == nullptr) {
+      return false;
+    }
+    return _fvNetworkIsRunning(_networkManager!) != 0;
+  }
+
+  /// Получить состояние сети
+  /// 0=stopped, 1=starting, 2=running, 3=stopping, 4=error
+  int getNetworkState() {
+    if (_networkManager == null || _networkManager == nullptr) {
+      return 0;
+    }
+    return _fvNetworkGetState(_networkManager!);
+  }
+
+  /// Получить порт сервера
+  int getNetworkPort() {
+    if (_networkManager == null || _networkManager == nullptr) {
+      return 0;
+    }
+    return _fvNetworkGetPort(_networkManager!);
+  }
+
+  /// Получить обнаруженные устройства (через NetworkManager)
+  List<DeviceInfo> getNetworkDiscoveredDevices() {
+    _ensureNetworkManager();
+    final ptr = _fvNetworkGetDiscoveredDevices(_networkManager!);
+    if (ptr == nullptr) return [];
+
+    final jsonStr = ptr.toDartString();
+    _fvFreeString(ptr);
+    
+    if (jsonStr.isEmpty || jsonStr == '[]') return [];
+    
+    final List<dynamic> jsonList = jsonDecode(jsonStr);
+    return jsonList.map((j) => DeviceInfo.fromJson(j)).toList();
+  }
+
+  /// Получить подключённые устройства
+  List<DeviceInfo> getConnectedDevices() {
+    _ensureNetworkManager();
+    final ptr = _fvNetworkGetConnectedDevices(_networkManager!);
+    if (ptr == nullptr) return [];
+
+    final jsonStr = ptr.toDartString();
+    _fvFreeString(ptr);
+    
+    if (jsonStr.isEmpty || jsonStr == '[]') return [];
+    
+    final List<dynamic> jsonList = jsonDecode(jsonStr);
+    return jsonList.map((j) => DeviceInfo.fromJson(j)).toList();
+  }
+
+  /// Подключиться к устройству по ID
+  void connectToDevice(String deviceId) {
+    _ensureNetworkManager();
+    final deviceIdPtr = deviceId.toNativeUtf8();
+    try {
+      final error = _fvNetworkConnectToDevice(_networkManager!, deviceIdPtr);
+      _checkError(error, 'Failed to connect to device');
+    } finally {
+      calloc.free(deviceIdPtr);
+    }
+  }
+
+  /// Подключиться к устройству по адресу
+  void connectToAddress(String host, int port) {
+    _ensureNetworkManager();
+    final hostPtr = host.toNativeUtf8();
+    try {
+      final error = _fvNetworkConnectToAddress(_networkManager!, hostPtr, port);
+      _checkError(error, 'Failed to connect to address');
+    } finally {
+      calloc.free(hostPtr);
+    }
+  }
+
+  /// Отключиться от устройства
+  void disconnectFromDevice(String deviceId) {
+    if (_networkManager == null || _networkManager == nullptr) return;
+    final deviceIdPtr = deviceId.toNativeUtf8();
+    try {
+      _fvNetworkDisconnectDevice(_networkManager!, deviceIdPtr);
+    } finally {
+      calloc.free(deviceIdPtr);
+    }
+  }
+
+  /// Отключиться от всех устройств
+  void disconnectAllDevices() {
+    if (_networkManager == null || _networkManager == nullptr) return;
+    _fvNetworkDisconnectAll(_networkManager!);
+  }
+
+  /// Проверить подключение к устройству
+  bool isConnectedTo(String deviceId) {
+    if (_networkManager == null || _networkManager == nullptr) return false;
+    final deviceIdPtr = deviceId.toNativeUtf8();
+    try {
+      return _fvNetworkIsConnectedTo(_networkManager!, deviceIdPtr) != 0;
+    } finally {
+      calloc.free(deviceIdPtr);
+    }
+  }
+
+  /// Получить последнюю ошибку сети
+  String? getNetworkLastError() {
+    if (_networkManager == null || _networkManager == nullptr) return null;
+    final ptr = _fvNetworkGetLastError(_networkManager!);
+    if (ptr == nullptr) return null;
+    final str = ptr.toDartString();
+    _fvFreeString(ptr);
+    return str.isEmpty ? null : str;
+  }
+
+  /// Установить базу данных для синхронизации индекса
+  /// Должен вызываться после initDatabase и startNetwork
+  void setNetworkDatabase() {
+    _ensureDatabase();
+    _ensurePairing();
+    if (_networkManager == null || _networkManager == nullptr) {
+      throw NativeException(FVError.invalidArgument, 'NetworkManager not initialized');
+    }
+    final deviceIdPtr = getDeviceId().toNativeUtf8();
+    try {
+      final result = _fvNetworkSetDatabase(_networkManager!, _database!, deviceIdPtr);
+      if (result != 0) {
+        throw NativeException(FVError.fromValue(result), 'Failed to set network database');
+      }
+    } finally {
+      calloc.free(deviceIdPtr);
+    }
+  }
+
+  /// Запросить синхронизацию индекса с устройством
+  /// @param deviceId ID устройства (должно быть подключено)
+  /// @param fullSync true для полной синхронизации (все файлы)
+  void requestIndexSync(String deviceId, {bool fullSync = false}) {
+    if (_networkManager == null || _networkManager == nullptr) {
+      throw NativeException(FVError.invalidArgument, 'NetworkManager not initialized');
+    }
+    final deviceIdPtr = deviceId.toNativeUtf8();
+    try {
+      final result = _fvNetworkRequestSync(_networkManager!, deviceIdPtr, fullSync ? 1 : 0);
+      if (result != 0) {
+        throw NativeException(FVError.fromValue(result), 'Failed to request sync');
+      }
+    } finally {
+      calloc.free(deviceIdPtr);
+    }
+  }
+
+  List<RemoteFileRecord> _parseRemoteFilePointer(Pointer<Utf8> ptr) {
+    if (ptr == nullptr) return [];
+    try {
+      final jsonStr = ptr.toDartString();
+      _fvFreeString(ptr);
+      return _decodeRemoteFiles(jsonStr);
+    } catch (_) {
+      _fvFreeString(ptr);
+      return [];
+    }
+  }
+
+  List<RemoteFileRecord> _decodeRemoteFiles(String jsonStr) {
+    if (jsonStr.isEmpty || jsonStr == '[]') return [];
+    try {
+      final List<dynamic> jsonList = jsonDecode(jsonStr);
+      return jsonList
+          .map((item) => RemoteFileRecord.fromJson(
+              Map<String, dynamic>.from(item as Map<dynamic, dynamic>)))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Получить список удалённых файлов (с других устройств семьи)
+  List<RemoteFileRecord> getNetworkRemoteFiles() {
+    if (_networkManager == null || _networkManager == nullptr) return [];
+    final ptr = _fvNetworkGetRemoteFiles(_networkManager!);
+    return _parseRemoteFilePointer(ptr);
+  }
+
+  /// Поиск по удалённым файлам
+  List<RemoteFileRecord> searchNetworkRemoteFiles(String query, {int limit = 50}) {
+    if (_networkManager == null || _networkManager == nullptr) return [];
+    final queryPtr = query.toNativeUtf8();
+    try {
+      final ptr = _fvNetworkSearchRemoteFiles(_networkManager!, queryPtr, limit);
+      return _parseRemoteFilePointer(ptr);
+    } finally {
+      calloc.free(queryPtr);
+    }
+  }
+
+  /// Получить количество удалённых файлов
+  int getNetworkRemoteFileCount() {
+    if (_networkManager == null || _networkManager == nullptr) return 0;
+    return _fvNetworkGetRemoteFileCount(_networkManager!);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // File Transfer
+  // ═══════════════════════════════════════════════════════════
+
+  /// Установить директорию кэша для файлов
+  void setFileCacheDir(String cacheDir) {
+    if (_networkManager == null || _networkManager == nullptr) {
+      throw NativeException(FVError.invalidArgument, 'NetworkManager not initialized');
+    }
+    final cacheDirPtr = cacheDir.toNativeUtf8();
+    try {
+      final result = _fvNetworkSetCacheDir(_networkManager!, cacheDirPtr);
+      if (result != 0) {
+        throw NativeException(FVError.fromValue(result), 'Failed to set cache directory');
+      }
+    } finally {
+      calloc.free(cacheDirPtr);
+    }
+  }
+
+  /// Результат запроса файла
+  /// Возвращает либо request ID (начинается НЕ с "CACHED:"), либо путь к кэшу (начинается с "CACHED:")
+  static const String _cacheHitPrefix = 'CACHED:';
+
+  /// Запросить файл с удалённого устройства
+  /// @return FileRequestResult с requestId или cachedPath
+  FileRequestResult? requestRemoteFile({
+    required String deviceId,
+    required int fileId,
+    required String fileName,
+    required int expectedSize,
+    String? checksum,
+  }) {
+    if (_networkManager == null || _networkManager == nullptr) return null;
+    
+    final deviceIdPtr = deviceId.toNativeUtf8();
+    final fileNamePtr = fileName.toNativeUtf8();
+    final checksumPtr = checksum?.toNativeUtf8() ?? nullptr;
+    
+    try {
+      final resultPtr = _fvNetworkRequestFile(
+        _networkManager!,
+        deviceIdPtr,
+        fileId,
+        fileNamePtr,
+        expectedSize,
+        checksumPtr,
+      );
+      
+      if (resultPtr == nullptr) return null;
+      final result = resultPtr.toDartString();
+      _fvFreeString(resultPtr);
+      if (result.isEmpty) return null;
+      
+      // Check for cache hit
+      if (result.startsWith(_cacheHitPrefix)) {
+        return FileRequestResult.cached(result.substring(_cacheHitPrefix.length));
+      }
+      return FileRequestResult.pending(result);
+    } finally {
+      calloc.free(deviceIdPtr);
+      calloc.free(fileNamePtr);
+      if (checksumPtr != nullptr) calloc.free(checksumPtr);
+    }
+  }
+
+  /// Отменить запрос файла
+  void cancelFileRequest(String requestId) {
+    if (_networkManager == null || _networkManager == nullptr) return;
+    final requestIdPtr = requestId.toNativeUtf8();
+    try {
+      _fvNetworkCancelFileRequest(_networkManager!, requestIdPtr);
+    } finally {
+      calloc.free(requestIdPtr);
+    }
+  }
+
+  /// Отменить все запросы файлов к устройству
+  void cancelAllFileRequests(String deviceId) {
+    if (_networkManager == null || _networkManager == nullptr) return;
+    final deviceIdPtr = deviceId.toNativeUtf8();
+    try {
+      _fvNetworkCancelAllFileRequests(_networkManager!, deviceIdPtr);
+    } finally {
+      calloc.free(deviceIdPtr);
+    }
+  }
+
+  /// Получить активные передачи
+  List<Map<String, dynamic>> getActiveTransfers() {
+    if (_networkManager == null || _networkManager == nullptr) return [];
+    final ptr = _fvNetworkGetActiveTransfers(_networkManager!);
+    if (ptr == nullptr) return [];
+    try {
+      final jsonStr = ptr.toDartString();
+      _fvFreeString(ptr);
+      if (jsonStr.isEmpty) return [];
+      final list = jsonDecode(jsonStr) as List;
+      return list.cast<Map<String, dynamic>>();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Получить прогресс передачи
+  Map<String, dynamic>? getTransferProgress(String requestId) {
+    if (_networkManager == null || _networkManager == nullptr) return null;
+    final requestIdPtr = requestId.toNativeUtf8();
+    try {
+      final ptr = _fvNetworkGetTransferProgress(_networkManager!, requestIdPtr);
+      if (ptr == nullptr) return null;
+      final jsonStr = ptr.toDartString();
+      _fvFreeString(ptr);
+      if (jsonStr.isEmpty) return null;
+      return jsonDecode(jsonStr) as Map<String, dynamic>;
+    } catch (e) {
+      return null;
+    } finally {
+      calloc.free(requestIdPtr);
+    }
+  }
+
+  /// Проверить, есть ли файл в кэше
+  /// @param deviceId ID устройства-источника
+  /// @param fileId ID файла
+  /// @param checksum Контрольная сумма (опционально)
+  bool isFileCached(String deviceId, int fileId, {String? checksum}) {
+    if (_networkManager == null || _networkManager == nullptr) return false;
+    final deviceIdPtr = deviceId.toNativeUtf8();
+    final checksumPtr = checksum?.toNativeUtf8() ?? nullptr;
+    try {
+      return _fvNetworkIsFileCached(_networkManager!, deviceIdPtr, fileId, checksumPtr) != 0;
+    } finally {
+      calloc.free(deviceIdPtr);
+      if (checksumPtr != nullptr) calloc.free(checksumPtr);
+    }
+  }
+
+  /// Получить путь к кэшированному файлу
+  /// @param deviceId ID устройства-источника
+  /// @param fileId ID файла
+  String? getCachedFilePath(String deviceId, int fileId) {
+    if (_networkManager == null || _networkManager == nullptr) return null;
+    final deviceIdPtr = deviceId.toNativeUtf8();
+    try {
+      final ptr = _fvNetworkGetCachedPath(_networkManager!, deviceIdPtr, fileId);
+      if (ptr == nullptr) return null;
+      final path = ptr.toDartString();
+      _fvFreeString(ptr);
+      return path.isEmpty ? null : path;
+    } finally {
+      calloc.free(deviceIdPtr);
+    }
+  }
+
+  /// Очистить кэш файлов
+  void clearFileCache() {
+    if (_networkManager == null || _networkManager == nullptr) return;
+    _fvNetworkClearCache(_networkManager!);
+  }
+
+  /// Получить размер кэша (в байтах)
+  int getFileCacheSize() {
+    if (_networkManager == null || _networkManager == nullptr) return 0;
+    return _fvNetworkGetCacheSize(_networkManager!);
+  }
+
+  /// Проверить, есть ли активные передачи
+  bool hasActiveTransfers() {
+    if (_networkManager == null || _networkManager == nullptr) return false;
+    return _fvNetworkHasActiveTransfers(_networkManager!) != 0;
+  }
+
+  /// Уничтожить NetworkManager
+  void disposeNetworkManager() {
+    if (_networkManager != null && _networkManager != nullptr) {
+      _fvNetworkStop(_networkManager!);
+      _fvNetworkDestroy(_networkManager!);
+      _networkManager = null;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // Index Sync Manager
+  // ═══════════════════════════════════════════════════════════
+
+  /// Инициализировать IndexSyncManager
+  void initSyncManager() {
+    if (_indexSyncManager != null) return;
+    if (_database == null) throw StateError('Database not initialized');
+    _ensurePairing();
+
+    final deviceIdPtr = getDeviceId().toNativeUtf8();
+    try {
+      _indexSyncManager = _fvSyncCreate(_database!, deviceIdPtr);
+      if (_indexSyncManager == nullptr) {
+        _checkLastError('Failed to create sync manager');
+      }
+    } finally {
+      calloc.free(deviceIdPtr);
+    }
+  }
+
+  void _ensureSyncManager() {
+    if (_indexSyncManager == null) {
+      initSyncManager();
+    }
+  }
+
+  /// Получить все удалённые файлы
+  List<RemoteFileRecord> getRemoteFiles() {
+    _ensureSyncManager();
+    final ptr = _fvSyncGetRemoteFiles(_indexSyncManager!);
+    return _parseRemoteFilePointer(ptr);
+  }
+
+  /// Получить удалённые файлы с устройства
+  List<RemoteFileRecord> getRemoteFilesFrom(String deviceId) {
+    _ensureSyncManager();
+    final deviceIdPtr = deviceId.toNativeUtf8();
+    try {
+      final ptr = _fvSyncGetRemoteFilesFrom(_indexSyncManager!, deviceIdPtr);
+      return _parseRemoteFilePointer(ptr);
+    } finally {
+      calloc.free(deviceIdPtr);
+    }
+  }
+
+  /// Поиск по удалённым файлам
+  List<RemoteFileRecord> searchRemoteFiles(String query, {int limit = 50}) {
+    _ensureSyncManager();
+    final queryPtr = query.toNativeUtf8();
+    try {
+      final ptr = _fvSyncSearchRemote(_indexSyncManager!, queryPtr, limit);
+      return _parseRemoteFilePointer(ptr);
+    } finally {
+      calloc.free(queryPtr);
+    }
+  }
+
+  /// Количество удалённых файлов
+  int getRemoteFileCount() {
+    _ensureSyncManager();
+    return _fvSyncGetRemoteCount(_indexSyncManager!);
+  }
+
+  /// Проверить, идёт ли синхронизация
+  bool isSyncing() {
+    if (_indexSyncManager == null || _indexSyncManager == nullptr) return false;
+    return _fvSyncIsSyncing(_indexSyncManager!) != 0;
+  }
+
+  /// Уничтожить IndexSyncManager
+  void disposeSyncManager() {
+    if (_indexSyncManager != null && _indexSyncManager != nullptr) {
+      _fvSyncDestroy(_indexSyncManager!);
+      _indexSyncManager = null;
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1763,3 +3004,88 @@ typedef _FvContentIndexerReindexAll = int Function(Pointer<Void> indexer,
 typedef _FvContentIndexerCanExtract = int Function(Pointer<Void> indexer, Pointer<Utf8> mimeType);
 typedef _FvContentIndexerSetMaxTextSizeKB = void Function(Pointer<Void> indexer, int sizeKB);
 typedef _FvContentIndexerGetMaxTextSizeKB = int Function(Pointer<Void> indexer);
+
+// Secure Storage
+typedef _FvSecureCreate = Pointer<Void> Function();
+typedef _FvSecureDestroy = void Function(Pointer<Void> storage);
+typedef _FvSecureStoreString = int Function(Pointer<Void> storage, Pointer<Utf8> key, Pointer<Utf8> value);
+typedef _FvSecureRetrieveString = Pointer<Utf8> Function(Pointer<Void> storage, Pointer<Utf8> key);
+typedef _FvSecureRemove = int Function(Pointer<Void> storage, Pointer<Utf8> key);
+typedef _FvSecureExists = int Function(Pointer<Void> storage, Pointer<Utf8> key);
+
+// Family Pairing
+typedef _FvPairingCreate = Pointer<Void> Function(Pointer<Void> storage);
+typedef _FvPairingDestroy = void Function(Pointer<Void> pairing);
+typedef _FvPairingIsConfigured = int Function(Pointer<Void> pairing);
+typedef _FvPairingGetDeviceId = Pointer<Utf8> Function(Pointer<Void> pairing);
+typedef _FvPairingGetDeviceName = Pointer<Utf8> Function(Pointer<Void> pairing);
+typedef _FvPairingSetDeviceName = void Function(Pointer<Void> pairing, Pointer<Utf8> name);
+typedef _FvPairingGetDeviceType = int Function(Pointer<Void> pairing);
+typedef _FvPairingCreateFamily = Pointer<Utf8> Function(Pointer<Void> pairing);
+typedef _FvPairingRegeneratePin = Pointer<Utf8> Function(Pointer<Void> pairing);
+typedef _FvPairingCancel = void Function(Pointer<Void> pairing);
+typedef _FvPairingHasPending = int Function(Pointer<Void> pairing);
+typedef _FvPairingJoinPin = int Function(Pointer<Void> pairing, Pointer<Utf8> pin, Pointer<Utf8> host, int port);
+typedef _FvPairingJoinQr = int Function(Pointer<Void> pairing, Pointer<Utf8> qrData);
+typedef _FvPairingReset = void Function(Pointer<Void> pairing);
+typedef _FvPairingStartServer = int Function(Pointer<Void> pairing, int port);
+typedef _FvPairingStopServer = void Function(Pointer<Void> pairing);
+typedef _FvPairingIsServerRunning = int Function(Pointer<Void> pairing);
+typedef _FvPairingGetServerPort = int Function(Pointer<Void> pairing);
+
+// Network Discovery
+typedef _FvDiscoveryCreate = Pointer<Void> Function();
+typedef _FvDiscoveryDestroy = void Function(Pointer<Void> discovery);
+typedef _FvDiscoveryStart = int Function(Pointer<Void> discovery, Pointer<Void> pairing, Pointer<NativeFunction<Void Function(Int32, Pointer<Utf8>, Pointer<Void>)>> callback, Pointer<Void> userData);
+typedef _FvDiscoveryStop = void Function(Pointer<Void> discovery);
+typedef _FvDiscoveryIsRunning = int Function(Pointer<Void> discovery);
+typedef _FvDiscoveryGetDevices = Pointer<Utf8> Function(Pointer<Void> discovery);
+typedef _FvDiscoveryGetDeviceCount = int Function(Pointer<Void> discovery);
+typedef _FvDiscoveryGetDevice = Pointer<Utf8> Function(Pointer<Void> discovery, Pointer<Utf8> deviceId);
+typedef _FvDiscoveryGetLocalIps = Pointer<Utf8> Function();
+
+// Network Manager
+typedef _FvNetworkCreate = Pointer<Void> Function(Pointer<Void> pairing);
+typedef _FvNetworkDestroy = void Function(Pointer<Void> mgr);
+typedef _FvNetworkStart = int Function(Pointer<Void> mgr, int port, Pointer<NativeFunction<Void Function(Int32, Pointer<Utf8>, Pointer<Void>)>> callback, Pointer<Void> userData);
+typedef _FvNetworkStop = void Function(Pointer<Void> mgr);
+typedef _FvNetworkGetState = int Function(Pointer<Void> mgr);
+typedef _FvNetworkIsRunning = int Function(Pointer<Void> mgr);
+typedef _FvNetworkGetPort = int Function(Pointer<Void> mgr);
+typedef _FvNetworkGetDiscoveredDevices = Pointer<Utf8> Function(Pointer<Void> mgr);
+typedef _FvNetworkGetConnectedDevices = Pointer<Utf8> Function(Pointer<Void> mgr);
+typedef _FvNetworkConnectToDevice = int Function(Pointer<Void> mgr, Pointer<Utf8> deviceId);
+typedef _FvNetworkConnectToAddress = int Function(Pointer<Void> mgr, Pointer<Utf8> host, int port);
+typedef _FvNetworkDisconnectDevice = void Function(Pointer<Void> mgr, Pointer<Utf8> deviceId);
+typedef _FvNetworkDisconnectAll = void Function(Pointer<Void> mgr);
+typedef _FvNetworkIsConnectedTo = int Function(Pointer<Void> mgr, Pointer<Utf8> deviceId);
+typedef _FvNetworkGetLastError = Pointer<Utf8> Function(Pointer<Void> mgr);
+typedef _FvNetworkSetDatabase = int Function(Pointer<Void> mgr, Pointer<Void> db, Pointer<Utf8> deviceId);
+typedef _FvNetworkRequestSync = int Function(Pointer<Void> mgr, Pointer<Utf8> deviceId, int fullSync);
+typedef _FvNetworkGetRemoteFiles = Pointer<Utf8> Function(Pointer<Void> mgr);
+typedef _FvNetworkSearchRemoteFiles = Pointer<Utf8> Function(Pointer<Void> mgr, Pointer<Utf8> query, int limit);
+typedef _FvNetworkGetRemoteFileCount = int Function(Pointer<Void> mgr);
+
+// File Transfer
+typedef _FvNetworkSetCacheDir = int Function(Pointer<Void> mgr, Pointer<Utf8> cacheDir);
+typedef _FvNetworkRequestFile = Pointer<Utf8> Function(
+    Pointer<Void> mgr, Pointer<Utf8> deviceId, int fileId, 
+    Pointer<Utf8> fileName, int expectedSize, Pointer<Utf8> checksum);
+typedef _FvNetworkCancelFileRequest = void Function(Pointer<Void> mgr, Pointer<Utf8> requestId);
+typedef _FvNetworkCancelAllFileRequests = void Function(Pointer<Void> mgr, Pointer<Utf8> deviceId);
+typedef _FvNetworkGetActiveTransfers = Pointer<Utf8> Function(Pointer<Void> mgr);
+typedef _FvNetworkGetTransferProgress = Pointer<Utf8> Function(Pointer<Void> mgr, Pointer<Utf8> requestId);
+typedef _FvNetworkIsFileCached = int Function(Pointer<Void> mgr, Pointer<Utf8> deviceId, int fileId, Pointer<Utf8> checksum);
+typedef _FvNetworkGetCachedPath = Pointer<Utf8> Function(Pointer<Void> mgr, Pointer<Utf8> deviceId, int fileId);
+typedef _FvNetworkClearCache = void Function(Pointer<Void> mgr);
+typedef _FvNetworkGetCacheSize = int Function(Pointer<Void> mgr);
+typedef _FvNetworkHasActiveTransfers = int Function(Pointer<Void> mgr);
+
+// Index Sync Manager
+typedef _FvSyncCreate = Pointer<Void> Function(Pointer<Void> db, Pointer<Utf8> deviceId);
+typedef _FvSyncDestroy = void Function(Pointer<Void> mgr);
+typedef _FvSyncGetRemoteFiles = Pointer<Utf8> Function(Pointer<Void> mgr);
+typedef _FvSyncGetRemoteFilesFrom = Pointer<Utf8> Function(Pointer<Void> mgr, Pointer<Utf8> deviceId);
+typedef _FvSyncSearchRemote = Pointer<Utf8> Function(Pointer<Void> mgr, Pointer<Utf8> query, int limit);
+typedef _FvSyncGetRemoteCount = int Function(Pointer<Void> mgr);
+typedef _FvSyncIsSyncing = int Function(Pointer<Void> mgr);

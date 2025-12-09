@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/models/models.dart';
 import 'core/providers/providers.dart';
 import 'features/search/search_home_screen.dart';
 import 'features/folders/folders_screen.dart';
@@ -9,6 +10,10 @@ import 'features/tags/tags_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/duplicates/duplicates_screen.dart';
 import 'features/files/file_view_screen.dart';
+import 'features/network/family_setup_screen.dart';
+import 'features/network/devices_screen.dart';
+import 'features/network/remote_files_screen.dart';
+import 'features/network/remote_file_viewer.dart';
 import 'shared/widgets/app_error_widget.dart';
 import 'theme/app_theme.dart';
 
@@ -20,6 +25,10 @@ class AppRoutes {
   static const settings = '/settings';
   static const duplicates = '/duplicates';
   static const fileView = '/file/:id';
+  static const family = '/family';
+  static const devices = '/devices';
+  static const remoteFiles = '/network/files';
+  static const remoteFileView = '/network/files/view';
 }
 
 /// Главный роутер приложения
@@ -60,6 +69,38 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final id = int.tryParse(state.pathParameters['id'] ?? '') ?? 0;
           return FileViewScreen(fileId: id);
+        },
+      ),
+      GoRoute(
+        path: AppRoutes.family,
+        name: 'family',
+        builder: (context, state) => const FamilySetupScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.devices,
+        name: 'devices',
+        builder: (context, state) => const DevicesScreen(),
+      ),
+      // Remote Files
+      GoRoute(
+        path: AppRoutes.remoteFiles,
+        name: 'remoteFiles',
+        builder: (context, state) {
+          final deviceId = state.uri.queryParameters['deviceId'];
+          return RemoteFilesScreen(deviceId: deviceId);
+        },
+      ),
+      GoRoute(
+        path: AppRoutes.remoteFileView,
+        name: 'remoteFileView',
+        builder: (context, state) {
+          final file = state.extra as RemoteFileRecord?;
+          if (file == null) {
+            return const Scaffold(
+              body: Center(child: Text('Файл не найден')),
+            );
+          }
+          return RemoteFileViewer(file: file);
         },
       ),
     ],

@@ -38,7 +38,7 @@ class IndexStatusBar extends ConsumerWidget {
               stats.when(
                 data: (s) => _StatsSection(stats: s),
                 loading: () => const _StatsPlaceholder(),
-                error: (_, __) => const SizedBox.shrink(),
+                error: (_, _) => const SizedBox.shrink(),
               ),
 
               const Spacer(),
