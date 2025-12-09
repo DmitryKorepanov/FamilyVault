@@ -21,18 +21,22 @@ core/include/familyvault/
 ├── TagManager.h        # Теги
 ├── DuplicateFinder.h   # Дубликаты
 │
-├── TextExtractor.h     # Извлечение текста (Этап 3)
-├── ThumbnailGenerator.h # Генерация превью (новый!)
+├── TextExtractor.h     # Интерфейсы экстракторов (Этап 3)
+├── ContentIndexer.h    # Фоновая индексация контента
+├── MimeTypeDetector.h  # Определение MIME типов
 │
 ├── SecureStorage.h     # Хранение секретов (ЕДИНСТВЕННОЕ место!)
-├── CloudAccount.h      # OAuth, Google Drive (Этап 4)
+├── FamilyPairing.h     # Семейный pairing (PIN/QR)
 │
 ├── Network/            # P2P (Этап 5)
-│   ├── Discovery.h
-│   ├── Protocol.h
-│   ├── TlsPsk.h
-│   ├── PeerConnection.h
-│   └── FamilyPairing.h
+│   ├── Discovery.h         # UDP broadcast обнаружение
+│   ├── NetworkProtocol.h   # Типы сообщений, сериализация
+│   ├── TlsPsk.h            # TLS 1.3 PSK обёртка над OpenSSL
+│   ├── PeerConnection.h    # TCP соединение с peer
+│   ├── NetworkManager.h    # Координатор P2P сети
+│   ├── IndexSyncManager.h  # Синхронизация индекса
+│   ├── RemoteFileAccess.h  # Запросы и передача файлов
+│   └── PairingServer.h     # TCP сервер для pairing
 │
 └── familyvault_c.h     # C API для FFI (единственная версия!)
 ```
@@ -111,6 +115,17 @@ enum class DeviceType : int32_t {
     Desktop = 0,
     Mobile = 1,
     Tablet = 2
+};
+
+// ═══════════════════════════════════════════════════════════
+// Порядок сортировки
+// ═══════════════════════════════════════════════════════════
+
+enum class SortBy : int32_t {
+    Relevance = 0,
+    Name = 1,
+    Date = 2,
+    Size = 3
 };
 
 } // namespace FamilyVault
@@ -435,10 +450,11 @@ typedef struct FVIndexManager_* FVIndexManager;
 typedef struct FVSearchEngine_* FVSearchEngine;
 typedef struct FVTagManager_* FVTagManager;
 typedef struct FVDuplicateFinder_* FVDuplicateFinder;
-typedef struct FVThumbnailGenerator_* FVThumbnailGenerator;
+typedef struct FVContentIndexer_* FVContentIndexer;
 typedef struct FVSecureStorage_* FVSecureStorage;
-typedef struct FVNetworkManager_* FVNetworkManager;
 typedef struct FVFamilyPairing_* FVFamilyPairing;
+typedef struct FVNetworkDiscovery_* FVNetworkDiscovery;
+typedef struct FVNetworkManager_* FVNetworkManager;
 
 // ═══════════════════════════════════════════════════════════
 // Коды ошибок
@@ -453,6 +469,7 @@ typedef enum {
     FV_ERROR_ALREADY_EXISTS = 5,
     FV_ERROR_AUTH_FAILED = 6,
     FV_ERROR_NETWORK = 7,
+    FV_ERROR_BUSY = 8,              // Resource busy (e.g., DB has active managers)
     FV_ERROR_INTERNAL = 99
 } FVError;
 
@@ -462,21 +479,48 @@ typedef enum {
 
 FV_API const char* fv_version(void);
 FV_API const char* fv_error_message(FVError error);
+
+/// Получить последнюю ошибку (thread-local)
+FV_API FVError fv_last_error(void);
+
+/// Получить сообщение последней ошибки (thread-local)
+FV_API const char* fv_last_error_message(void);
+
+/// Очистить состояние ошибки
+FV_API void fv_clear_error(void);
+
+/// Освободить строку, выделенную библиотекой
 FV_API void fv_free_string(char* str);
 
 // ═══════════════════════════════════════════════════════════
 // Database
 // ═══════════════════════════════════════════════════════════
 
+/// Открыть базу данных
+/// @note База использует reference counting. Закрытие возможно только
+///       когда все менеджеры уничтожены.
 FV_API FVDatabase fv_database_open(const char* path, FVError* out_error);
-FV_API void fv_database_close(FVDatabase db);
+
+/// Закрыть базу данных
+/// @return FV_OK при успехе, FV_ERROR_BUSY если есть живые менеджеры
+FV_API FVError fv_database_close(FVDatabase db);
+
+/// Инициализировать БД (применить миграции)
 FV_API FVError fv_database_initialize(FVDatabase db);
+
+/// Проверить, инициализирована ли БД
+FV_API int32_t fv_database_is_initialized(FVDatabase db);
 
 // ═══════════════════════════════════════════════════════════
 // Index Manager
 // ═══════════════════════════════════════════════════════════
 
+/// Создать IndexManager
+/// @note Увеличивает reference count базы данных
 FV_API FVIndexManager fv_index_create(FVDatabase db);
+
+/// Уничтожить IndexManager
+/// @note Автоматически уменьшает reference count базы данных
 FV_API void fv_index_destroy(FVIndexManager mgr);
 
 // Folders
@@ -492,6 +536,7 @@ FV_API FVError fv_index_scan_folder(FVIndexManager mgr, int64_t folder_id,
                                      FVScanCallback cb, void* user_data);
 FV_API FVError fv_index_scan_all(FVIndexManager mgr, FVScanCallback cb, void* user_data);
 FV_API void fv_index_stop_scan(FVIndexManager mgr);
+FV_API int32_t fv_index_is_scanning(FVIndexManager mgr);
 
 // Files — полная версия (FileRecord)
 FV_API char* fv_index_get_file(FVIndexManager mgr, int64_t file_id);  // JSON FileRecord
@@ -504,8 +549,15 @@ FV_API char* fv_index_get_by_folder_compact(FVIndexManager mgr, int64_t folder_i
 
 FV_API char* fv_index_get_stats(FVIndexManager mgr);  // JSON
 
+/// Удалить файл из индекса (и опционально с диска)
+FV_API FVError fv_index_delete_file(FVIndexManager mgr, int64_t file_id, int32_t delete_from_disk);
+
+/// Оптимизация БД (rebuild FTS + VACUUM)
+FV_API FVError fv_index_optimize_database(FVIndexManager mgr);
+
 // Visibility
 FV_API FVError fv_index_set_folder_visibility(FVIndexManager mgr, int64_t folder_id, int32_t visibility);
+FV_API FVError fv_index_set_folder_enabled(FVIndexManager mgr, int64_t folder_id, int32_t enabled);
 FV_API FVError fv_index_set_file_visibility(FVIndexManager mgr, int64_t file_id, int32_t visibility);
 
 // ═══════════════════════════════════════════════════════════
@@ -528,6 +580,7 @@ FV_API char* fv_search_suggest(FVSearchEngine engine, const char* prefix, int32_
 // Tag Manager
 // ═══════════════════════════════════════════════════════════
 
+/// @note Увеличивает reference count базы данных
 FV_API FVTagManager fv_tags_create(FVDatabase db);
 FV_API void fv_tags_destroy(FVTagManager mgr);
 
@@ -535,12 +588,16 @@ FV_API FVError fv_tags_add(FVTagManager mgr, int64_t file_id, const char* tag);
 FV_API FVError fv_tags_remove(FVTagManager mgr, int64_t file_id, const char* tag);
 FV_API char* fv_tags_get_for_file(FVTagManager mgr, int64_t file_id);  // JSON array
 FV_API char* fv_tags_get_all(FVTagManager mgr);  // JSON array with counts
+FV_API char* fv_tags_get_popular(FVTagManager mgr, int32_t limit);  // JSON array
 
 // ═══════════════════════════════════════════════════════════
 // Duplicate Finder
 // ═══════════════════════════════════════════════════════════
 
-FV_API FVDuplicateFinder fv_duplicates_create(FVDatabase db);
+/// Создать DuplicateFinder
+/// @param db База данных
+/// @param indexMgr Опционально: IndexManager для централизованного удаления
+FV_API FVDuplicateFinder fv_duplicates_create(FVDatabase db, FVIndexManager indexMgr);
 FV_API void fv_duplicates_destroy(FVDuplicateFinder finder);
 
 FV_API char* fv_duplicates_find(FVDuplicateFinder finder);  // JSON array
@@ -548,40 +605,45 @@ FV_API char* fv_duplicates_stats(FVDuplicateFinder finder);  // JSON
 FV_API char* fv_duplicates_without_backup(FVDuplicateFinder finder);  // JSON array
 FV_API FVError fv_duplicates_delete_file(FVDuplicateFinder finder, int64_t file_id);
 
+/// Вычислить недостающие checksums
+typedef void (*FVChecksumProgressCallback)(int32_t processed, int32_t total, void* user_data);
+FV_API FVError fv_duplicates_compute_checksums(FVDuplicateFinder finder,
+                                                FVChecksumProgressCallback cb, void* user_data);
+
 // ═══════════════════════════════════════════════════════════
-// Thumbnail Generator (Этап 2+)
+// Content Indexer (Text Extraction)
 // ═══════════════════════════════════════════════════════════
 
-FV_API FVThumbnailGenerator fv_thumbs_create(FVDatabase db);
-FV_API void fv_thumbs_destroy(FVThumbnailGenerator gen);
+FV_API FVContentIndexer fv_content_indexer_create(FVDatabase db);
+FV_API void fv_content_indexer_destroy(FVContentIndexer indexer);
 
-// Возвращает JPEG данные. out_size заполняется размером.
-// Вызывающий должен освободить память через fv_free_bytes()
-//
-// Поддерживаемые форматы:
-//   Images: JPEG, PNG, GIF, WebP (через stb_image)
-//   Video:  первый keyframe (через FFmpeg, optional dependency)
-//   PDF:    первая страница (через Poppler, optional dependency)
-// Fallback: иконка по типу файла
-//
+/// Запустить фоновую обработку текста
+FV_API FVError fv_content_indexer_start(FVContentIndexer indexer);
 
-// Sync версия (для кэшированных/быстрых форматов)
-FV_API uint8_t* fv_thumbs_generate(FVThumbnailGenerator gen, int64_t file_id, 
-                                    int32_t max_size, int32_t* out_size);
+/// Остановить фоновую обработку
+FV_API FVError fv_content_indexer_stop(FVContentIndexer indexer, int32_t wait);
 
-// Async версия (для video/PDF — не блокирует UI thread)
-typedef void (*FVThumbnailCallback)(int64_t file_id, uint8_t* data, int32_t size, void* user_data);
-FV_API void fv_thumbs_generate_async(FVThumbnailGenerator gen, int64_t file_id,
-                                      int32_t max_size, FVThumbnailCallback cb, void* user_data);
+/// Проверить, запущена ли обработка
+FV_API int32_t fv_content_indexer_is_running(FVContentIndexer indexer);
 
-FV_API void fv_free_bytes(uint8_t* data);
+/// Обработать конкретный файл (синхронно)
+FV_API FVError fv_content_indexer_process_file(FVContentIndexer indexer, int64_t file_id);
 
-// Проверка наличия в кэше (disk cache, max 500MB, LRU eviction)
-FV_API bool fv_thumbs_is_cached(FVThumbnailGenerator gen, int64_t file_id);
+/// Добавить все необработанные файлы в очередь
+FV_API int32_t fv_content_indexer_enqueue_unprocessed(FVContentIndexer indexer);
 
-// Capability detection: какие форматы поддерживаются на текущем устройстве
-// Возвращает JSON: ["jpeg","png","gif","webp","pdf","mp4"]
-FV_API char* fv_thumbs_supported_formats(FVThumbnailGenerator gen);
+/// Получить статус (JSON: pending, processed, failed, isRunning, currentFile)
+FV_API char* fv_content_indexer_get_status(FVContentIndexer indexer);
+
+/// Callback для прогресса
+typedef void (*FVContentProgressCallback)(int32_t processed, int32_t total, void* user_data);
+
+/// Переиндексировать все файлы
+FV_API FVError fv_content_indexer_reindex_all(FVContentIndexer indexer,
+                                               FVContentProgressCallback cb, void* user_data);
+
+/// Проверить, поддерживается ли MIME тип
+FV_API int32_t fv_content_indexer_can_extract(FVContentIndexer indexer, const char* mime_type);
 
 // ═══════════════════════════════════════════════════════════
 // Secure Storage
@@ -590,74 +652,131 @@ FV_API char* fv_thumbs_supported_formats(FVThumbnailGenerator gen);
 FV_API FVSecureStorage fv_secure_create(void);
 FV_API void fv_secure_destroy(FVSecureStorage storage);
 
+/// Сохранить бинарные данные
 FV_API FVError fv_secure_store(FVSecureStorage storage, const char* key, 
                                 const uint8_t* data, int32_t size);
-FV_API uint8_t* fv_secure_retrieve(FVSecureStorage storage, const char* key, 
-                                    int32_t* out_size);  // Caller frees with fv_free_bytes
+
+/// Получить бинарные данные
+/// @return Размер данных или -1 при ошибке. Если out_data=NULL, возвращает только размер.
+FV_API int32_t fv_secure_retrieve(FVSecureStorage storage, const char* key,
+                                   uint8_t* out_data, int32_t max_size);
+
 FV_API FVError fv_secure_remove(FVSecureStorage storage, const char* key);
+
+/// Проверить существование ключа
+FV_API int32_t fv_secure_exists(FVSecureStorage storage, const char* key);
 
 // Convenience для строк
 FV_API FVError fv_secure_store_string(FVSecureStorage storage, const char* key, const char* value);
 FV_API char* fv_secure_retrieve_string(FVSecureStorage storage, const char* key);
 
 // ═══════════════════════════════════════════════════════════
-// Family Pairing (Этап 5)
+// Family Pairing
 // ═══════════════════════════════════════════════════════════
 
 FV_API FVFamilyPairing fv_pairing_create(FVSecureStorage storage);
 FV_API void fv_pairing_destroy(FVFamilyPairing pairing);
 
-FV_API bool fv_pairing_is_configured(FVFamilyPairing pairing);
+FV_API int32_t fv_pairing_is_configured(FVFamilyPairing pairing);
 FV_API char* fv_pairing_get_device_id(FVFamilyPairing pairing);
+FV_API char* fv_pairing_get_device_name(FVFamilyPairing pairing);
+FV_API void fv_pairing_set_device_name(FVFamilyPairing pairing, const char* name);
+FV_API int32_t fv_pairing_get_device_type(FVFamilyPairing pairing);
 
 // Создание семьи (первое устройство)
 FV_API char* fv_pairing_create_family(FVFamilyPairing pairing);  // JSON {pin, qrData, expiresAt}
+FV_API char* fv_pairing_regenerate_pin(FVFamilyPairing pairing);
+FV_API void fv_pairing_cancel(FVFamilyPairing pairing);
+FV_API int32_t fv_pairing_has_pending(FVFamilyPairing pairing);
 
 // Присоединение к семье
-FV_API FVError fv_pairing_join_pin(FVFamilyPairing pairing, const char* pin);
-FV_API FVError fv_pairing_join_qr(FVFamilyPairing pairing, const char* qr_data);
+/// @return 0=Success, 1=InvalidPin, 2=Expired, 3=RateLimited, 4=NetworkError, 5=AlreadyConfigured
+FV_API int32_t fv_pairing_join_pin(FVFamilyPairing pairing, const char* pin,
+                                    const char* initiator_host, uint16_t initiator_port);
+FV_API int32_t fv_pairing_join_qr(FVFamilyPairing pairing, const char* qr_data);
 
 FV_API void fv_pairing_reset(FVFamilyPairing pairing);
 
+// PSK для TLS
+FV_API int32_t fv_pairing_derive_psk(FVFamilyPairing pairing, uint8_t* out_psk);
+FV_API char* fv_pairing_get_psk_identity(FVFamilyPairing pairing);
+
+// Pairing сервер
+FV_API FVError fv_pairing_start_server(FVFamilyPairing pairing, uint16_t port);
+FV_API void fv_pairing_stop_server(FVFamilyPairing pairing);
+FV_API int32_t fv_pairing_is_server_running(FVFamilyPairing pairing);
+FV_API uint16_t fv_pairing_get_server_port(FVFamilyPairing pairing);
+
 // ═══════════════════════════════════════════════════════════
-// Network Manager (Этап 5)
+// Network Discovery
 // ═══════════════════════════════════════════════════════════
 
-FV_API FVNetworkManager fv_network_create(FVDatabase db, FVIndexManager idx, 
-                                           FVFamilyPairing pairing);
+/// Callback при обнаружении/потере устройства
+/// @param event 0=found, 1=lost, 2=updated
+typedef void (*FVDeviceCallback)(int32_t event, const char* device_json, void* user_data);
+
+FV_API FVNetworkDiscovery fv_discovery_create(void);
+FV_API void fv_discovery_destroy(FVNetworkDiscovery discovery);
+FV_API FVError fv_discovery_start(FVNetworkDiscovery discovery, FVFamilyPairing pairing,
+                                   FVDeviceCallback callback, void* user_data);
+FV_API void fv_discovery_stop(FVNetworkDiscovery discovery);
+FV_API char* fv_discovery_get_devices(FVNetworkDiscovery discovery);
+FV_API char* fv_discovery_get_local_ips(void);
+
+// ═══════════════════════════════════════════════════════════
+// Network Manager (P2P координатор)
+// ═══════════════════════════════════════════════════════════
+
+/// Callback события сети
+/// @param event 0=device_discovered, 1=device_lost, 2=device_connected, 
+///              3=device_disconnected, 4=state_changed, 5=error
+typedef void (*FVNetworkCallback)(int32_t event, const char* data_json, void* user_data);
+
+FV_API FVNetworkManager fv_network_create(FVFamilyPairing pairing);
 FV_API void fv_network_destroy(FVNetworkManager mgr);
 
-FV_API FVError fv_network_start(FVNetworkManager mgr, const char* device_name);
+FV_API FVError fv_network_start(FVNetworkManager mgr, uint16_t port,
+                                 FVNetworkCallback callback, void* user_data);
 FV_API void fv_network_stop(FVNetworkManager mgr);
 
-FV_API char* fv_network_get_devices(FVNetworkManager mgr);  // JSON array
-FV_API char* fv_network_get_status(FVNetworkManager mgr);   // JSON
+/// Состояние: 0=stopped, 1=starting, 2=running, 3=stopping, 4=error
+FV_API int32_t fv_network_get_state(FVNetworkManager mgr);
+FV_API int32_t fv_network_is_running(FVNetworkManager mgr);
+FV_API uint16_t fv_network_get_port(FVNetworkManager mgr);
 
-FV_API FVError fv_network_connect(FVNetworkManager mgr, const char* device_id);
-FV_API void fv_network_disconnect(FVNetworkManager mgr, const char* device_id);
-FV_API void fv_network_sync_now(FVNetworkManager mgr);
+FV_API char* fv_network_get_discovered_devices(FVNetworkManager mgr);
+FV_API char* fv_network_get_connected_devices(FVNetworkManager mgr);
 
-// Manual IP connect (для разных подсетей, когда UDP discovery не работает)
-FV_API FVError fv_network_connect_ip(FVNetworkManager mgr, const char* ip_address, uint16_t port);
+FV_API FVError fv_network_connect_to_device(FVNetworkManager mgr, const char* device_id);
+FV_API FVError fv_network_connect_to_address(FVNetworkManager mgr, const char* host, uint16_t port);
+FV_API void fv_network_disconnect_device(FVNetworkManager mgr, const char* device_id);
+FV_API void fv_network_disconnect_all(FVNetworkManager mgr);
+FV_API int32_t fv_network_is_connected_to(FVNetworkManager mgr, const char* device_id);
 
-// File download — возвращает download_id для отмены
-typedef void (*FVDownloadProgressCallback)(int64_t received, int64_t total, void* user_data);
-typedef void (*FVDownloadCompleteCallback)(const char* local_path, void* user_data);
-typedef void (*FVDownloadErrorCallback)(const char* error, void* user_data);
+/// Установить базу данных для синхронизации индекса
+FV_API FVError fv_network_set_database(FVNetworkManager mgr, FVDatabase db, const char* device_id);
 
-FV_API int64_t fv_network_request_file(FVNetworkManager mgr, const char* device_id, int64_t file_id,
-                                        FVDownloadProgressCallback on_progress,
-                                        FVDownloadCompleteCallback on_complete,
-                                        FVDownloadErrorCallback on_error,
-                                        void* user_data);  // returns download_id, 0 on error
+/// Установить кэш-директорию для загруженных файлов
+FV_API FVError fv_network_set_file_cache_dir(FVNetworkManager mgr, const char* cache_dir);
 
-FV_API void fv_network_cancel_download(FVNetworkManager mgr, int64_t download_id);
+/// Синхронизация (только для подключённых devices с настроенной БД)
+FV_API FVError fv_network_setup_index_sync(FVNetworkManager mgr);
 
-// Event callbacks
-typedef void (*FVDeviceEventCallback)(const char* device_json, void* user_data);
-FV_API void fv_network_on_device_found(FVNetworkManager mgr, FVDeviceEventCallback cb, void* user_data);
-FV_API void fv_network_on_device_connected(FVNetworkManager mgr, FVDeviceEventCallback cb, void* user_data);
-FV_API void fv_network_on_device_disconnected(FVNetworkManager mgr, FVDeviceEventCallback cb, void* user_data);
+/// File transfer
+typedef void (*FVFileProgressCallback)(const char* progress_json, void* user_data);
+typedef void (*FVFileCompleteCallback)(const char* result_json, void* user_data);
+typedef void (*FVFileErrorCallback)(const char* error_json, void* user_data);
+
+FV_API char* fv_network_request_file(FVNetworkManager mgr, const char* device_id, int64_t file_id,
+                                      FVFileProgressCallback on_progress,
+                                      FVFileCompleteCallback on_complete,
+                                      FVFileErrorCallback on_error, void* user_data);
+
+FV_API FVError fv_network_cancel_download(FVNetworkManager mgr, const char* request_id);
+
+/// Получить удалённые файлы (из sync index)
+FV_API char* fv_network_get_remote_files(FVNetworkManager mgr, const char* device_id,
+                                          int32_t limit, int32_t offset);
 
 #ifdef __cplusplus
 }
@@ -1110,16 +1229,21 @@ const Migration MIGRATIONS[] = {
         CREATE TABLE settings (...);
         CREATE TABLE watched_folders (...);
         CREATE TABLE files (...);
-        -- и т.д.
-    )"},
-    {2, "Add tags support", R"(
         CREATE TABLE tags (...);
         CREATE TABLE file_tags (...);
+        CREATE TABLE file_content (...);
+        CREATE TABLE image_metadata (...);
+        CREATE TABLE deleted_files (...);
+        CREATE TABLE sync_state (...);
+        CREATE VIRTUAL TABLE files_fts USING fts5(...);
+        -- P2P поля включены: source_device_id, is_remote, sync_version, last_modified_by
     )"},
-    {3, "Add P2P fields", R"(
-        ALTER TABLE files ADD COLUMN source_device_id TEXT;
-        ALTER TABLE files ADD COLUMN is_remote INTEGER DEFAULT 0;
+    {2, "Reset extracted_at to trigger re-indexing", R"(
+        UPDATE file_content SET extracted_at = 0;
+        DELETE FROM files_fts;
+        INSERT INTO files_fts(rowid, name, relative_path, content) SELECT ...;
     )"},
+    // Migration 3 будет для cloud_accounts (Google Drive)
 };
 ```
 
