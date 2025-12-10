@@ -265,10 +265,10 @@ CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 NC='\033[0m'
 
-log() { echo -e "${BLUE}[$1]${NC} $2"; }
-success() { echo -e "${GREEN}✅ $1${NC}"; }
-error() { echo -e "${RED}❌ $1${NC}"; }
-warn() { echo -e "${YELLOW}⚠️  $1${NC}"; }
+log() { echo -e "${BLUE}[$1]${NC} $2" >&2; }
+success() { echo -e "${GREEN}✅ $1${NC}" >&2; }
+error() { echo -e "${RED}❌ $1${NC}" >&2; }
+warn() { echo -e "${YELLOW}⚠️  $1${NC}" >&2; }
 
 # ═══════════════════════════════════════════════════════════
 # Проверка зависимостей
@@ -574,7 +574,7 @@ $summaries_content
     fi
     
     # Ищем файл решений (относительный путь → абсолютный)
-    DECISIONS_FILE=$(grep -m1 "^Решения:" "$PLAN_FILE" | cut -d' ' -f2 || echo "")
+    DECISIONS_FILE=$(grep -m1 "^Решения:" "$PLAN_FILE" | cut -d' ' -f2 | tr -d '\r' || echo "")
     if [ -n "$DECISIONS_FILE" ] && [ ! -f "$DECISIONS_FILE" ]; then
         # Пробуем относительно директории плана
         PLAN_DIR=$(dirname "$PLAN_FILE")
@@ -683,13 +683,27 @@ $TASK
     QUESTIONS=$(run_planner "$QUESTIONS_PROMPT")
     log_agent "PLANNER" "$PLANNER_MODEL" "$QUESTIONS_PROMPT" "$QUESTIONS"
     echo "$QUESTIONS"
+
+    QUESTIONS_CLEAN=$(printf '%s\n' "$QUESTIONS" | awk '
+/^[[:space:]]*#+[[:space:]]*(План|Plan|Iteration)/ { exit }
+{ print }')
+    if [ -z "$QUESTIONS_CLEAN" ]; then
+        if echo "$QUESTIONS" | grep -qiE '^[[:space:]]*#.+(План|Plan|Iteration)'; then
+            warn "PLANNER пропустил этап вопросов и сразу вывел план — лишний блок будет отброшен из промптов."
+            QUESTIONS_CLEAN="⚠️ Planner пропустил этап вопросов. См. лог."
+        else
+            QUESTIONS_CLEAN="$QUESTIONS"
+        fi
+    elif [ "$QUESTIONS_CLEAN" != "$QUESTIONS" ]; then
+        warn "PLANNER попытался вставить план уже на шаге вопросов — обрезаю дубликат."
+    fi
     
     # Сохраняем вопросы
     echo "# Вопросы планирования" > "$DECISIONS_FILE"
     echo "" >> "$DECISIONS_FILE"
     echo "Задача: $TASK" >> "$DECISIONS_FILE"
     echo "" >> "$DECISIONS_FILE"
-    echo "$QUESTIONS" >> "$DECISIONS_FILE"
+    echo "$QUESTIONS_CLEAN" >> "$DECISIONS_FILE"
     
     ANSWERS_TMP=$(mktemp)
     
@@ -814,10 +828,54 @@ fi
 # РЕЖИМ: ВЫПОЛНЕНИЕ ПЛАНА (--run) или ПРЯМОЕ КОДИРОВАНИЕ
 # ═══════════════════════════════════════════════════════════════
 
+# Функция обработки вопросов от CODER
+handle_questions() {
+    local response="$1"
+    local rounds=0
+    
+    while echo "$response" | grep -qE "$QUESTION_PATTERN"; do
+        rounds=$((rounds + 1))
+        
+        if [ $rounds -gt $MAX_QUESTION_ROUNDS ]; then
+            warn "Достигнут лимит раундов вопросов ($MAX_QUESTION_ROUNDS). Продолжаем без ответов."
+            response=$(run_coder "Лимит вопросов достигнут. Действуй по своему усмотрению и продолжай реализацию.")
+            log_agent "CODER" "$CODER_MODEL" "question limit reached" "$response"
+            break
+        fi
+        
+        echo "" >&2
+        echo "═══════════════════════════════════════════════════════════════" >&2
+        echo -e "${MAGENTA}CODER задал вопросы (раунд $rounds/$MAX_QUESTION_ROUNDS). Введите ответы:${NC}" >&2
+        echo "═══════════════════════════════════════════════════════════════" >&2
+        echo "$response" >&2
+        
+        # Читаем ответ от пользователя
+        local user_answers
+        if [ -t 0 ]; then
+            read -r user_answers
+        else
+            # Если не интерактивный режим (на всякий случай)
+            user_answers=""
+        fi
+        
+        if [ -z "$user_answers" ]; then
+            user_answers="Действуй по своему усмотрению"
+        fi
+        
+        log "CODER ($CODER_MODEL)" "Отвечаю на вопросы..."
+        response=$(run_coder "Ответы на твои вопросы: $user_answers
+        
+Продолжай реализацию. Больше вопросов не задавай — сразу делай.")
+        log_agent "CODER" "$CODER_MODEL" "answers: $user_answers" "$response"
+    done
+    
+    echo "$response"
+}
+
 # Функция создания нового CODER'а
 create_coder_session() {
     CODER_CHAT_ID=$(wsl -d Ubuntu -- bash -c "cd '$WSL_PROJECT_ROOT' && ~/.local/bin/cursor-agent create-chat")
-    echo -e "CODER Chat ID: ${CYAN}$CODER_CHAT_ID${NC}"
+    log "INIT" "CODER Chat ID: $CODER_CHAT_ID"
     # Логируем для возможного восстановления
     echo "CODER_CHAT_ID: $CODER_CHAT_ID" >> "$LOG_FILE"
     echo "" >> "$HISTORY_FILE"
@@ -841,7 +899,7 @@ fi
 
 if [ "$MODE" = "run" ]; then
     # Ищем файл решений (относительный путь → абсолютный)
-    DECISIONS_FILE=$(grep -m1 "^Решения:" "$PLAN_FILE" | cut -d' ' -f2 || echo "")
+    DECISIONS_FILE=$(grep -m1 "^Решения:" "$PLAN_FILE" | cut -d' ' -f2 | tr -d '\r' || echo "")
     if [ -n "$DECISIONS_FILE" ] && [ ! -f "$DECISIONS_FILE" ]; then
         # Пробуем относительно директории плана
         PLAN_DIR=$(dirname "$PLAN_FILE")
@@ -852,13 +910,21 @@ if [ "$MODE" = "run" ]; then
         fi
     fi
     
+    DECISIONS_SECTION=""
+    if [ -n "$DECISIONS_FILE" ] && [ -f "$DECISIONS_FILE" ]; then
+        DECISIONS_SECTION="## Решения
+$(cat "$DECISIONS_FILE")
+
+"
+    fi
+    
     if [ -n "$ONLY_ITER" ]; then
         CODER_INIT_PROMPT="$CODER_ROLE
 
 ## План
 $(cat "$PLAN_FILE")
 
-$([ -f "$DECISIONS_FILE" ] && echo "## Решения" && cat "$DECISIONS_FILE")
+$DECISIONS_SECTION
 
 ---
 
@@ -870,7 +936,7 @@ $([ -f "$DECISIONS_FILE" ] && echo "## Решения" && cat "$DECISIONS_FILE")
 ## План
 $(cat "$PLAN_FILE")
 
-$([ -f "$DECISIONS_FILE" ] && echo "## Решения" && cat "$DECISIONS_FILE")
+$DECISIONS_SECTION
 
 ---
 
@@ -896,37 +962,9 @@ CODER_RESPONSE=$(run_coder "$CODER_INIT_PROMPT")
 log_agent "CODER" "$CODER_MODEL" "$CODER_INIT_PROMPT" "$CODER_RESPONSE"
 echo "$CODER_RESPONSE"
 
-# Проверяем, задал ли CODER вопросы (структурированные маркеры)
-QUESTION_ROUNDS=0
-
-while echo "$CODER_RESPONSE" | grep -qE "$QUESTION_PATTERN"; do
-    QUESTION_ROUNDS=$((QUESTION_ROUNDS + 1))
-    
-    if [ $QUESTION_ROUNDS -gt $MAX_QUESTION_ROUNDS ]; then
-        warn "Достигнут лимит раундов вопросов ($MAX_QUESTION_ROUNDS). Продолжаем без ответов."
-        CODER_RESPONSE=$(run_coder "Лимит вопросов достигнут. Действуй по своему усмотрению и продолжай реализацию.")
-        log_agent "CODER" "$CODER_MODEL" "question limit reached" "$CODER_RESPONSE"
-        echo "$CODER_RESPONSE"
-        break
-    fi
-    
-    echo ""
-    echo "═══════════════════════════════════════════════════════════════"
-    echo -e "${MAGENTA}CODER задал вопросы (раунд $QUESTION_ROUNDS/$MAX_QUESTION_ROUNDS). Введите ответы:${NC}"
-    echo "═══════════════════════════════════════════════════════════════"
-    read -r CODER_ANSWERS
-    
-    if [ -z "$CODER_ANSWERS" ]; then
-        CODER_ANSWERS="Действуй по своему усмотрению"
-    fi
-    
-    log "CODER ($CODER_MODEL)" "Отвечаю на вопросы..."
-    CODER_RESPONSE=$(run_coder "Ответы на твои вопросы: $CODER_ANSWERS
-
-Продолжай реализацию. Больше вопросов не задавай — сразу делай.")
-    log_agent "CODER" "$CODER_MODEL" "answers: $CODER_ANSWERS" "$CODER_RESPONSE"
-    echo "$CODER_RESPONSE"
-done
+# Обработка вопросов (инкапсулировано в handle_questions)
+CODER_RESPONSE=$(handle_questions "$CODER_RESPONSE")
+echo "$CODER_RESPONSE"
 
 CODER_FIX_PROMPT="Исправь замечания от ревьювера:
 
@@ -966,9 +1004,13 @@ while true; do
     
     # Собираем diff для ревьювера
     log "REVIEW" "Собираю diff..."
+    
+    # Добавляем все новые файлы (так как CODER не может делать git add)
+    git add .
+    
     DIFF_FILE="$LOG_DIR/diff_${SESSION_ID}_${CYCLE_NUM}.patch"
-    GIT_DIFF_STAT=$(git diff --stat 2>/dev/null || echo "No changes")
-    git diff > "$DIFF_FILE" 2>/dev/null || echo "No diff" > "$DIFF_FILE"
+    GIT_DIFF_STAT=$(git diff --cached --stat 2>/dev/null || echo "No changes")
+    git diff --cached > "$DIFF_FILE" 2>/dev/null || echo "No diff" > "$DIFF_FILE"
     DIFF_LINES=$(wc -l < "$DIFF_FILE")
     
     # Проверка пустого diff
@@ -1002,21 +1044,62 @@ while true; do
     
     # C++ сборка (если есть CMakeLists.txt)
     if [ -f "CMakeLists.txt" ]; then
-        if [ ! -d "build/windows-x64" ]; then
-            warn "build/windows-x64 не найден — пытаюсь создать..."
-            if cmake -S . -B build/windows-x64 -G "Ninja" > "$BUILD_LOG" 2>&1; then
-                log "BUILD" "CMake configure OK"
-            else
-                warn "CMake configure FAILED — сборка не будет проверена"
-                echo "CMake configure failed" >> "$BUILD_LOG"
+        # На Windows используем batch файл для vcvars + cmake
+        if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || -n "$WINDIR" ]]; then
+            # Пути для Git Bash
+            VCVARS_UNIX="/c/Program Files/Microsoft Visual Studio/2022/Professional/VC/Auxiliary/Build/vcvars64.bat"
+            VCVARS_WIN="C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\VC\\Auxiliary\\Build\\vcvars64.bat"
+            
+            if [ ! -f "$VCVARS_UNIX" ]; then
+                VCVARS_UNIX="/c/Program Files/Microsoft Visual Studio/2022/Community/VC/Auxiliary/Build/vcvars64.bat"
+                VCVARS_WIN="C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat"
             fi
-        fi
-        
-        if [ -d "build/windows-x64" ]; then
+            
+            if [ -f "$VCVARS_UNIX" ]; then
+                BUILD_STATUS="OK"
+                # Создаём временный batch файл (cmd не умеет сложные команды из bash)
+                BUILD_BAT="$LOG_DIR/build_${SESSION_ID}.bat"
+                cat > "$BUILD_BAT" << EOFBAT
+@echo off
+call "$VCVARS_WIN"
+if errorlevel 1 exit /b 1
+cmake --preset windows-x64
+if errorlevel 1 exit /b 1
+cmake --build build/windows-x64 --config Release
+EOFBAT
+                if ! "./$BUILD_BAT" > "$BUILD_LOG" 2>&1; then
+                    BUILD_STATUS="FAILED"
+                    warn "Сборка упала! См. $BUILD_LOG"
+                fi
+                rm -f "$BUILD_BAT"
+            else
+                warn "vcvars64.bat не найден — используем MSVC preset"
+                BUILD_STATUS="OK"
+                if ! cmake --preset windows-x64-msvc > "$BUILD_LOG" 2>&1; then
+                    warn "CMake configure failed"
+                fi
+                if [ -d "build/windows-x64" ]; then
+                    if ! cmake --build build/windows-x64 --config Release >> "$BUILD_LOG" 2>&1; then
+                        BUILD_STATUS="FAILED"
+                        warn "Сборка упала! См. $BUILD_LOG"
+                    fi
+                else
+                    BUILD_STATUS="SKIPPED"
+                fi
+            fi
+        else
+            # Linux/macOS
             BUILD_STATUS="OK"
-            if ! cmake --build build/windows-x64 --config Release >> "$BUILD_LOG" 2>&1; then
-                BUILD_STATUS="FAILED"
-                warn "Сборка упала! См. $BUILD_LOG"
+            if [ ! -d "build/windows-x64" ]; then
+                cmake --preset windows-x64 > "$BUILD_LOG" 2>&1 || true
+            fi
+            if [ -d "build/windows-x64" ]; then
+                if ! cmake --build build/windows-x64 --config Release >> "$BUILD_LOG" 2>&1; then
+                    BUILD_STATUS="FAILED"
+                    warn "Сборка упала! См. $BUILD_LOG"
+                fi
+            else
+                BUILD_STATUS="SKIPPED"
             fi
         fi
     fi
@@ -1053,21 +1136,61 @@ while true; do
         fi
     fi
     
-    # Формируем результат сборки для ревьювера
+    # Если сборка или тесты упали — сразу возвращаем CODER'у (без REVIEWER)
     if [ "$BUILD_STATUS" = "FAILED" ] || [ "$TEST_STATUS" = "FAILED" ] || [ "$FLUTTER_STATUS" = "FAILED" ]; then
-        BUILD_RESULT="
-## ❌ Сборка/Тесты
+        CONSECUTIVE_REVIEW_FAILURES=$((CONSECUTIVE_REVIEW_FAILURES + 1))
+        if [ $CONSECUTIVE_REVIEW_FAILURES -ge $MAX_CONSECUTIVE_FAILURES ]; then
+            echo "END: $(date)" >> "$LOG_FILE"
+            echo "STATUS: FAILED (build/test failures: $MAX_CONSECUTIVE_FAILURES)" >> "$LOG_FILE"
+            error "Слишком много неудачных сборок/тестов подряд ($MAX_CONSECUTIVE_FAILURES)!"
+            echo "Лог: $LOG_FILE"
+            echo "История: $HISTORY_FILE"
+            exit 1
+        fi
+        
+        log "CODER" "Сборка/тесты упали — возвращаю CODER'у (попытка $CONSECUTIVE_REVIEW_FAILURES/$MAX_CONSECUTIVE_FAILURES)..."
+        
+        BUILD_ERROR_PROMPT="## ❌ Сборка/Тесты упали!
 
 **C++ Build:** $BUILD_STATUS
 **C++ Tests:** $TEST_STATUS
 **Flutter:** $FLUTTER_STATUS
 
-Последние 50 строк лога:
+### Последние 80 строк лога:
 \`\`\`
-$(tail -50 "$BUILD_LOG" 2>/dev/null || echo "No log")
+$(tail -80 "$BUILD_LOG" 2>/dev/null || echo "No log")
 \`\`\`
-"
-    elif [ "$BUILD_STATUS" = "SKIPPED" ] && [ "$FLUTTER_STATUS" = "SKIPPED" ]; then
+
+**Исправь ошибки и попробуй снова.**
+Не нужно объяснять — просто исправь код."
+
+        CODER_RESPONSE=$(run_coder "$BUILD_ERROR_PROMPT")
+        log_agent "CODER (build fix)" "$CODER_MODEL" "$BUILD_ERROR_PROMPT" "$CODER_RESPONSE"
+        echo "$CODER_RESPONSE"
+        
+        # Детекция отказа использовать инструменты
+        if echo "$CODER_RESPONSE" | grep -qiE "не могу выполнить|cannot execute|терминал.*отклоняет|terminal.*rejects"; then
+            warn "CODER отказался использовать инструменты. Повторяю с напоминанием..."
+            REMIND_PROMPT="⚠️ Ты написал что не можешь выполнить команду. Это НЕПРАВИЛЬНО.
+
+У тебя ЕСТЬ доступ к инструментам:
+- edit_file / search_replace — для редактирования файлов
+- read_file — для чтения файлов
+
+ИСПОЛЬЗУЙ ИХ СЕЙЧАС. Исправь ошибки сборки/тестов."
+            CODER_RESPONSE=$(run_coder "$REMIND_PROMPT")
+            log_agent "CODER (remind tools)" "$CODER_MODEL" "$REMIND_PROMPT" "$CODER_RESPONSE"
+            echo "$CODER_RESPONSE"
+        fi
+        
+        continue  # Следующая итерация цикла — снова BUILD/TEST
+    fi
+    
+    # Сбрасываем счётчик при успешной сборке
+    CONSECUTIVE_REVIEW_FAILURES=0
+    
+    # Формируем результат сборки для ревьювера (только если всё OK)
+    if [ "$BUILD_STATUS" = "SKIPPED" ] && [ "$FLUTTER_STATUS" = "SKIPPED" ]; then
         BUILD_RESULT="
 ## ⚠️ Сборка/Тесты: НЕ ПРОВЕРЕНЫ
 
@@ -1085,7 +1208,7 @@ CMakeLists.txt и pubspec.yaml не найдены.
     
     # Загружаем роль REVIEWER и список файлов
     REVIEWER_ROLE=$(cat agents/prompts/code_reviewer.md 2>/dev/null || echo "Ты — CODE REVIEWER.")
-    CHANGED_FILES=$(git diff --name-only 2>/dev/null | head -10 || echo "")
+    CHANGED_FILES=$(git diff --cached --name-only 2>/dev/null | head -10 || echo "")
     
     # Формируем секцию previous review если есть
     PREV_REVIEW_SECTION=""
@@ -1135,18 +1258,8 @@ $GIT_DIFF
         warn "Считаем как NEEDS_WORK"
     fi
     
-    # Если сборка упала — всегда NEEDS_WORK
-    if [ "$BUILD_STATUS" = "FAILED" ] || [ "$TEST_STATUS" = "FAILED" ] || [ "$FLUTTER_STATUS" = "FAILED" ]; then
-         if echo "$REVIEW" | grep -qi "APPROVED"; then
-            warn "CODE_REVIEWER одобрил, но сборка/тесты упали! Переопределяю на NEEDS_WORK."
-            REVIEW="NEEDS_WORK
-
-### 🚨 Critical Issues
-#### CRITICAL-BUILD: Сборка или тесты упали
-Смотри лог выше. Исправь ошибки компиляции или тестов.
-"
-         fi
-    fi
+    # Примечание: сборка/тесты уже проверены выше и при ошибке возвращены CODER'у
+    # Здесь мы попадаем только если BUILD_STATUS=OK и TEST_STATUS=OK
 
     # Проверяем завершение ВСЕХ итераций (структурированный маркер)
     if echo "$CODER_RESPONSE" | grep -qiE "COMPLETED:\s*ALL_ITERATIONS|все итерации завершены|all iterations (complete|done)"; then
@@ -1173,6 +1286,16 @@ $GIT_DIFF
             save_iteration_summary "$ITER" "$CODER_RESPONSE"
             # Очищаем prev review для новой итерации
             PREV_REVIEW=""
+
+            # Автоматический коммит
+            if git diff --quiet && git diff --staged --quiet; then
+                warn "Нет изменений для коммита."
+            else
+                log "GIT" "Коммичу изменения итерации $ITER..."
+                git add .
+                git commit -m "feat: iteration $ITER completed (auto)"
+                success "Закоммичено: feat: iteration $ITER completed (auto)"
+            fi
             
             # Если --only, завершаем после одной итерации
             if [ -n "$ONLY_ITER" ]; then
@@ -1189,12 +1312,15 @@ $GIT_DIFF
                 
                 # Новый CODER для новой итерации фичи?
                 if [ "$FRESH_CODER" = true ]; then
-                    run_fresh_coder
+                    CODER_RESPONSE=$(run_fresh_coder)
                 else
                     CODER_RESPONSE=$(run_coder "$CODER_NEXT_PROMPT")
                     log_agent "CODER" "$CODER_MODEL" "$CODER_NEXT_PROMPT" "$CODER_RESPONSE"
-                    echo "$CODER_RESPONSE"
                 fi
+                
+                # Обработка вопросов для новой итерации
+                CODER_RESPONSE=$(handle_questions "$CODER_RESPONSE")
+                echo "$CODER_RESPONSE"
             else
                 echo "END: $(date)" >> "$LOG_FILE"
                 echo "STATUS: SUCCESS" >> "$LOG_FILE"
@@ -1229,10 +1355,28 @@ $GIT_DIFF
 
 $REVIEW
 
-Исправь только CRITICAL и HIGH."
+Исправь только CRITICAL и HIGH.
+
+ВАЖНО: Используй инструменты! НЕ пиши 'не могу выполнить' — вызывай edit_file, search_replace и т.д."
         CODER_RESPONSE=$(run_coder "$FIX_PROMPT")
         log_agent "CODER (fix)" "$CODER_MODEL" "$FIX_PROMPT" "$CODER_RESPONSE"
         echo "$CODER_RESPONSE"
+        
+        # Детекция отказа использовать инструменты
+        if echo "$CODER_RESPONSE" | grep -qiE "не могу выполнить|cannot execute|терминал.*отклоняет|terminal.*rejects"; then
+            warn "CODER отказался использовать инструменты. Повторяю с напоминанием..."
+            REMIND_PROMPT="⚠️ Ты написал что не можешь выполнить команду. Это НЕПРАВИЛЬНО.
+
+У тебя ЕСТЬ доступ к инструментам:
+- edit_file / search_replace — для редактирования файлов
+- codebase_search / grep — для поиска
+- read_file — для чтения файлов
+
+ИСПОЛЬЗУЙ ИХ СЕЙЧАС. Выполни предыдущую задачу через инструменты."
+            CODER_RESPONSE=$(run_coder "$REMIND_PROMPT")
+            log_agent "CODER (remind tools)" "$CODER_MODEL" "$REMIND_PROMPT" "$CODER_RESPONSE"
+            echo "$CODER_RESPONSE"
+        fi
     else
         if [ "$MODE" = "run" ]; then
             warn "Только WARNING → следующая итерация"
