@@ -9,4 +9,6 @@ export 'duplicate_service.dart';
 export 'content_indexer_service.dart';
 export 'network_service.dart';
 export 'android_network_service.dart';
+export 'google_auth_service.dart';
+
 

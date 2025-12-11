@@ -7,6 +7,7 @@ import 'dart:isolate';
 import 'package:ffi/ffi.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../models/cloud_account.dart';
 import '../models/models.dart';
 
 /// Коды ошибок из C API
@@ -246,6 +247,22 @@ class NativeBridge {
   late final _FvNetworkClearCache _fvNetworkClearCache;
   late final _FvNetworkGetCacheSize _fvNetworkGetCacheSize;
   late final _FvNetworkHasActiveTransfers _fvNetworkHasActiveTransfers;
+
+  // Cloud Accounts
+  late final _FvCloudAccountAdd _fvCloudAccountAdd;
+  late final _FvCloudAccountList _fvCloudAccountList;
+  late final _FvCloudAccountRemove _fvCloudAccountRemove;
+  late final _FvCloudAccountSetEnabled _fvCloudAccountSetEnabled;
+  late final _FvCloudAccountUpdateSync _fvCloudAccountUpdateSync;
+
+  late final _FvCloudFolderAdd _fvCloudFolderAdd;
+  late final _FvCloudFolderRemove _fvCloudFolderRemove;
+  late final _FvCloudFolderList _fvCloudFolderList;
+  late final _FvCloudFolderSetEnabled _fvCloudFolderSetEnabled;
+
+  late final _FvCloudFileUpsert _fvCloudFileUpsert;
+  late final _FvCloudFileRemove _fvCloudFileRemove;
+  late final _FvCloudFileRemoveAll _fvCloudFileRemoveAll;
 
   // Index Sync Manager
   late final _FvSyncCreate _fvSyncCreate;
@@ -860,6 +877,57 @@ class NativeBridge {
         .asFunction();
     _fvNetworkHasActiveTransfers = _lib
         .lookup<NativeFunction<Int32 Function(Pointer<Void>)>>('fv_network_has_active_transfers')
+        .asFunction();
+
+    // Cloud Accounts
+    _fvCloudAccountAdd = _lib
+        .lookup<NativeFunction<Int64 Function(
+            Pointer<Void>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>)>>('fv_cloud_account_add')
+        .asFunction();
+
+    _fvCloudAccountList = _lib
+        .lookup<NativeFunction<Pointer<Utf8> Function(Pointer<Void>)>>('fv_cloud_account_list')
+        .asFunction();
+
+    _fvCloudAccountRemove = _lib
+        .lookup<NativeFunction<Bool Function(Pointer<Void>, Int64)>>('fv_cloud_account_remove')
+        .asFunction();
+
+    _fvCloudAccountSetEnabled = _lib
+        .lookup<NativeFunction<Bool Function(Pointer<Void>, Int64, Bool)>>('fv_cloud_account_set_enabled')
+        .asFunction();
+
+    _fvCloudAccountUpdateSync = _lib
+        .lookup<NativeFunction<Bool Function(Pointer<Void>, Int64, Int64, Pointer<Utf8>)>>('fv_cloud_account_update_sync')
+        .asFunction();
+
+    _fvCloudFolderAdd = _lib
+        .lookup<NativeFunction<Int64 Function(
+            Pointer<Void>, Int64, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>)>>('fv_cloud_folder_add')
+        .asFunction();
+
+    _fvCloudFolderRemove = _lib
+        .lookup<NativeFunction<Bool Function(Pointer<Void>, Int64)>>('fv_cloud_folder_remove')
+        .asFunction();
+
+    _fvCloudFolderList = _lib
+        .lookup<NativeFunction<Pointer<Utf8> Function(Pointer<Void>, Int64)>>('fv_cloud_folder_list')
+        .asFunction();
+
+    _fvCloudFolderSetEnabled = _lib
+        .lookup<NativeFunction<Bool Function(Pointer<Void>, Int64, Bool)>>('fv_cloud_folder_set_enabled')
+        .asFunction();
+
+    _fvCloudFileUpsert = _lib
+        .lookup<NativeFunction<Bool Function(Pointer<Void>, Int64, Pointer<Utf8>)>>('fv_cloud_file_upsert')
+        .asFunction();
+
+    _fvCloudFileRemove = _lib
+        .lookup<NativeFunction<Bool Function(Pointer<Void>, Int64, Pointer<Utf8>)>>('fv_cloud_file_remove')
+        .asFunction();
+
+    _fvCloudFileRemoveAll = _lib
+        .lookup<NativeFunction<Bool Function(Pointer<Void>, Int64)>>('fv_cloud_file_remove_all')
         .asFunction();
 
     // Index Sync Manager
@@ -1907,6 +1975,8 @@ class NativeBridge {
   // Secure Storage
   // ═══════════════════════════════════════════════════════════
 
+  bool get isSecureStorageReady => _secureStorage != null;
+
   void _ensureSecureStorage() {
     if (_secureStorage == null) {
       throw StateError('SecureStorage not initialized. Call initPairing() first.');
@@ -2559,6 +2629,139 @@ class NativeBridge {
   }
 
   // ═══════════════════════════════════════════════════════════
+  // Cloud Accounts
+  // ═══════════════════════════════════════════════════════════
+
+  int addCloudAccount(String type, String email, String displayName, String avatarUrl) {
+    _ensureDatabase();
+    final typePtr = type.toNativeUtf8();
+    final emailPtr = email.toNativeUtf8();
+    final namePtr = displayName.toNativeUtf8();
+    final avatarPtr = avatarUrl.toNativeUtf8();
+    try {
+      final id = _fvCloudAccountAdd(_database!, typePtr, emailPtr, namePtr, avatarPtr);
+      if (id < 0) {
+        _checkLastError('Failed to add cloud account');
+      }
+      return id;
+    } finally {
+      calloc.free(typePtr);
+      calloc.free(emailPtr);
+      calloc.free(namePtr);
+      calloc.free(avatarPtr);
+    }
+  }
+
+  List<CloudAccount> getCloudAccounts() {
+    _ensureDatabase();
+    final ptr = _fvCloudAccountList(_database!);
+    final jsonStr = _readAndFreeJsonStringOrThrow(ptr, 'Failed to get cloud accounts');
+    if (jsonStr.isEmpty) return [];
+
+    final List<dynamic> json = jsonDecode(jsonStr);
+    return json.map((e) => CloudAccount.fromJson(e)).toList();
+  }
+
+  void removeCloudAccount(int accountId) {
+    _ensureDatabase();
+    if (!_fvCloudAccountRemove(_database!, accountId)) {
+      _checkLastError('Failed to remove cloud account');
+    }
+  }
+
+  void setCloudAccountEnabled(int accountId, bool enabled) {
+    _ensureDatabase();
+    if (!_fvCloudAccountSetEnabled(_database!, accountId, enabled)) {
+      _checkLastError('Failed to set cloud account enabled');
+    }
+  }
+
+  void updateCloudAccountSync(int accountId, int fileCount, String changeToken) {
+    _ensureDatabase();
+    final tokenPtr = changeToken.toNativeUtf8();
+    try {
+      if (!_fvCloudAccountUpdateSync(_database!, accountId, fileCount, tokenPtr)) {
+        _checkLastError('Failed to update cloud account sync');
+      }
+    } finally {
+      calloc.free(tokenPtr);
+    }
+  }
+
+  int addCloudFolder(int accountId, String cloudId, String name, String path) {
+    _ensureDatabase();
+    final cloudIdPtr = cloudId.toNativeUtf8();
+    final namePtr = name.toNativeUtf8();
+    final pathPtr = path.toNativeUtf8();
+    try {
+      final id = _fvCloudFolderAdd(_database!, accountId, cloudIdPtr, namePtr, pathPtr);
+      if (id < 0) {
+        _checkLastError('Failed to add cloud folder');
+      }
+      return id;
+    } finally {
+      calloc.free(cloudIdPtr);
+      calloc.free(namePtr);
+      calloc.free(pathPtr);
+    }
+  }
+
+  void removeCloudFolder(int folderId) {
+    _ensureDatabase();
+    if (!_fvCloudFolderRemove(_database!, folderId)) {
+      _checkLastError('Failed to remove cloud folder');
+    }
+  }
+
+  List<CloudWatchedFolder> getCloudFolders(int accountId) {
+    _ensureDatabase();
+    final ptr = _fvCloudFolderList(_database!, accountId);
+    final jsonStr = _readAndFreeJsonStringOrThrow(ptr, 'Failed to get cloud folders');
+    if (jsonStr.isEmpty) return [];
+
+    final List<dynamic> json = jsonDecode(jsonStr);
+    return json.map((e) => CloudWatchedFolder.fromJson(e)).toList();
+  }
+
+  void setCloudFolderEnabled(int folderId, bool enabled) {
+    _ensureDatabase();
+    if (!_fvCloudFolderSetEnabled(_database!, folderId, enabled)) {
+      _checkLastError('Failed to set cloud folder enabled');
+    }
+  }
+
+  void upsertCloudFile(int accountId, String fileJson) {
+    _ensureDatabase();
+    final jsonPtr = fileJson.toNativeUtf8();
+    try {
+      if (!_fvCloudFileUpsert(_database!, accountId, jsonPtr)) {
+        _checkLastError('Failed to upsert cloud file');
+      }
+    } finally {
+      calloc.free(jsonPtr);
+    }
+  }
+
+  void removeCloudFile(int accountId, String cloudId) {
+    _ensureDatabase();
+    final idPtr = cloudId.toNativeUtf8();
+    try {
+      if (!_fvCloudFileRemove(_database!, accountId, idPtr)) {
+        _checkLastError('Failed to remove cloud file');
+      }
+    } finally {
+      calloc.free(idPtr);
+    }
+  }
+
+  void removeAllCloudFiles(int accountId) {
+    _ensureDatabase();
+    if (!_fvCloudFileRemoveAll(_database!, accountId)) {
+        _checkLastError('Failed to remove all cloud files');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
   // Index Sync Manager
   // ═══════════════════════════════════════════════════════════
 
@@ -3108,6 +3311,42 @@ typedef _FvNetworkGetCachedPath = Pointer<Utf8> Function(Pointer<Void> mgr, Poin
 typedef _FvNetworkClearCache = void Function(Pointer<Void> mgr);
 typedef _FvNetworkGetCacheSize = int Function(Pointer<Void> mgr);
 typedef _FvNetworkHasActiveTransfers = int Function(Pointer<Void> mgr);
+
+// Cloud Accounts
+typedef _FvCloudAccountAdd = int Function(
+    Pointer<Void> db,
+    Pointer<Utf8> type,
+    Pointer<Utf8> email,
+    Pointer<Utf8> displayName,
+    Pointer<Utf8> avatarUrl);
+typedef _FvCloudAccountList = Pointer<Utf8> Function(Pointer<Void> db);
+typedef _FvCloudAccountRemove = bool Function(Pointer<Void> db, int accountId);
+typedef _FvCloudAccountSetEnabled = bool Function(Pointer<Void> db, int accountId, bool enabled);
+typedef _FvCloudAccountUpdateSync = bool Function(
+    Pointer<Void> db,
+    int accountId,
+    int fileCount,
+    Pointer<Utf8> changeToken);
+
+typedef _FvCloudFolderAdd = int Function(
+    Pointer<Void> db,
+    int accountId,
+    Pointer<Utf8> cloudId,
+    Pointer<Utf8> name,
+    Pointer<Utf8> path);
+typedef _FvCloudFolderRemove = bool Function(Pointer<Void> db, int folderId);
+typedef _FvCloudFolderList = Pointer<Utf8> Function(Pointer<Void> db, int accountId);
+typedef _FvCloudFolderSetEnabled = bool Function(Pointer<Void> db, int folderId, bool enabled);
+
+typedef _FvCloudFileUpsert = bool Function(
+    Pointer<Void> db,
+    int accountId,
+    Pointer<Utf8> fileJson);
+typedef _FvCloudFileRemove = bool Function(
+    Pointer<Void> db,
+    int accountId,
+    Pointer<Utf8> cloudId);
+typedef _FvCloudFileRemoveAll = bool Function(Pointer<Void> db, int accountId);
 
 // Index Sync Manager
 typedef _FvSyncCreate = Pointer<Void> Function(Pointer<Void> db, Pointer<Utf8> deviceId);

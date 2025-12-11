@@ -14,4 +14,5 @@ export 'device_info.dart';
 export 'pairing_info.dart';
 export 'file_transfer.dart';
 export 'remote_file_record.dart';
+export 'cloud_account.dart';
 
