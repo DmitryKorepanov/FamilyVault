@@ -166,23 +166,7 @@ CREATE TABLE IF NOT EXISTS sync_state (
     last_sync_at INTEGER,
     needs_full_resync INTEGER DEFAULT 0
 );
-    )SQL"},
-    
-    Migration{2, "Reset extracted_at to trigger re-indexing", R"SQL(
--- Сбрасываем extracted_at чтобы все существующие файлы были переиндексированы
--- enqueueUnprocessed() подхватит их (modified_at > extracted_at)
-UPDATE file_content SET extracted_at = 0;
 
--- Очищаем FTS для полной пересборки
-DELETE FROM files_fts;
-
--- Заполняем FTS базовыми данными из files (content будет добавлен при извлечении)
-INSERT INTO files_fts(rowid, name, relative_path, content)
-SELECT id, name, relative_path, '' FROM files;
-    )SQL"}
-
-    ,
-    Migration{3, "Cloud accounts and files", R"SQL(
 -- Облачные аккаунты (метаданные)
 CREATE TABLE IF NOT EXISTS cloud_accounts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -227,6 +211,8 @@ CREATE TABLE IF NOT EXISTS cloud_files (
     web_view_url TEXT,
     checksum TEXT,
     indexed_at INTEGER DEFAULT (strftime('%s', 'now')),
+    extension TEXT,
+    content_type INTEGER DEFAULT 0,
     UNIQUE(account_id, cloud_id),
     FOREIGN KEY (account_id) REFERENCES cloud_accounts(id) ON DELETE CASCADE
 );
@@ -234,6 +220,8 @@ CREATE TABLE IF NOT EXISTS cloud_files (
 CREATE INDEX IF NOT EXISTS idx_cloud_files_account ON cloud_files(account_id);
 CREATE INDEX IF NOT EXISTS idx_cloud_files_name ON cloud_files(name);
 CREATE INDEX IF NOT EXISTS idx_cloud_files_modified ON cloud_files(modified_at DESC);
+CREATE INDEX IF NOT EXISTS idx_cloud_files_extension ON cloud_files(extension);
+CREATE INDEX IF NOT EXISTS idx_cloud_files_content_type ON cloud_files(content_type);
 
 -- Полнотекстовый поиск по cloud_files
 CREATE VIRTUAL TABLE IF NOT EXISTS cloud_files_fts USING fts5(

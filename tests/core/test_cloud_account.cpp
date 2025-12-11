@@ -148,10 +148,10 @@ void cleanupTestDb(const std::string& path) {
 }
 }
 
-TEST(CloudMigrationTest, Migration3CreatesCloudSchema) {
+TEST(CloudMigrationTest, Migration1CreatesFullSchema) {
     // Create temporary database
     auto now = std::chrono::steady_clock::now().time_since_epoch().count();
-    std::string testDbPath = "test_migration3_" + std::to_string(now) + ".db";
+    std::string testDbPath = "test_migration1_" + std::to_string(now) + ".db";
     
     // Ensure clean state
     cleanupTestDb(testDbPath);
@@ -160,6 +160,10 @@ TEST(CloudMigrationTest, Migration3CreatesCloudSchema) {
         auto db = std::make_shared<Database>(testDbPath);
         db->initialize();
         
+        // Verify version 1 contains everything
+        auto currentVersion = db->queryScalar("SELECT MAX(version) FROM schema_version");
+        EXPECT_EQ(currentVersion, 1LL);
+
         // Verify cloud_accounts table exists
         auto accountTableExists = db->queryScalar(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='cloud_accounts'"
@@ -178,6 +182,17 @@ TEST(CloudMigrationTest, Migration3CreatesCloudSchema) {
         );
         EXPECT_EQ(filesTableExists, 1LL);
         
+        // Verify cloud_files has new columns
+        auto extensionCol = db->queryScalar(
+            "SELECT COUNT(*) FROM pragma_table_info('cloud_files') WHERE name='extension'"
+        );
+        EXPECT_EQ(extensionCol, 1LL);
+
+        auto contentTypeCol = db->queryScalar(
+            "SELECT COUNT(*) FROM pragma_table_info('cloud_files') WHERE name='content_type'"
+        );
+        EXPECT_EQ(contentTypeCol, 1LL);
+
         // Verify cloud_files_fts table exists
         auto ftsTableExists = db->queryScalar(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='cloud_files_fts'"
@@ -188,7 +203,8 @@ TEST(CloudMigrationTest, Migration3CreatesCloudSchema) {
         auto indexCount = db->queryScalar(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name LIKE 'idx_cloud_files_%'"
         );
-        EXPECT_EQ(indexCount, 3LL); // idx_cloud_files_account, _name, _modified
+        // We expect 5 indexes: account, name, modified, extension, content_type
+        EXPECT_EQ(indexCount, 5LL);
         
         // Verify FTS triggers exist
         auto triggerCount = db->queryScalar(
