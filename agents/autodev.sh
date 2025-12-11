@@ -1112,6 +1112,11 @@ EOFBAT
             TEST_STATUS="FAILED"
             warn "C++ тесты упали! См. $BUILD_LOG"
         fi
+    else
+        if [ "$BUILD_STATUS" = "FAILED" ]; then
+             log "TEST" "Сборка упала, пропускаю тесты..."
+             TEST_STATUS="SKIPPED (Build Failed)"
+        fi
     fi
     
     # Flutter/Dart проверки
@@ -1156,12 +1161,11 @@ EOFBAT
 **C++ Tests:** $TEST_STATUS
 **Flutter:** $FLUTTER_STATUS
 
-### Последние 80 строк лога:
-\`\`\`
-$(tail -80 "$BUILD_LOG" 2>/dev/null || echo "No log")
-\`\`\`
+### Лог сборки:
+См. файл: \`$BUILD_LOG\`
 
 **Исправь ошибки и попробуй снова.**
+Прочитай файл лога, чтобы узнать детали ошибки.
 Не нужно объяснять — просто исправь код."
 
         CODER_RESPONSE=$(run_coder "$BUILD_ERROR_PROMPT")
