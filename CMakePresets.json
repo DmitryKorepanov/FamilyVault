@@ -3,12 +3,31 @@
   "configurePresets": [
     {
       "name": "windows-x64",
-      "displayName": "Windows x64",
+      "displayName": "Windows x64 (Clang)",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/windows-x64",
       "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang-cl",
+        "CMAKE_CXX_COMPILER": "clang-cl",
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
         "CMAKE_BUILD_TYPE": "Release",
+        "ENABLE_TEXT_EXTRACTION": "ON",
+        "VCPKG_MANIFEST_FEATURES": "tests;text-extraction"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "windows-x64-msvc",
+      "displayName": "Windows x64 (MSVC)",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/windows-x64",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
         "ENABLE_TEXT_EXTRACTION": "ON",
         "VCPKG_MANIFEST_FEATURES": "tests;text-extraction"
       },
