@@ -8,6 +8,13 @@
 #include <string>
 #include <memory>
 #include <atomic>
+#include <cstring>
+
+#ifdef _WIN32
+    #define fv_strdup _strdup
+#else
+    #define fv_strdup strdup
+#endif
 
 // Thread-local error state
 extern thread_local FVError g_lastError;

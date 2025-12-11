@@ -1,5 +1,9 @@
 // TlsPsk.cpp — TLS 1.3 PSK Implementation using OpenSSL
 
+#ifdef _WIN32
+    #define NOMINMAX
+#endif
+
 #include "familyvault/Network/TlsPsk.h"
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -104,14 +108,27 @@ public:
         
         if (inet_pton(AF_INET, host.c_str(), &addr.sin_addr) != 1) {
             // Try DNS resolution
-            hostent* he = gethostbyname(host.c_str());
-            if (!he) {
+            struct addrinfo hints{}, *res = nullptr;
+            hints.ai_family = AF_INET;
+            hints.ai_socktype = SOCK_STREAM;
+            
+            if (getaddrinfo(host.c_str(), nullptr, &hints, &res) != 0) {
                 CLOSE_SOCKET(m_socket);
                 m_socket = SOCKET_INVALID;
                 m_lastError = "Failed to resolve host: " + host;
                 return false;
             }
-            memcpy(&addr.sin_addr, he->h_addr_list[0], he->h_length);
+            
+            if (res) {
+                struct sockaddr_in* ipv4 = reinterpret_cast<struct sockaddr_in*>(res->ai_addr);
+                addr.sin_addr = ipv4->sin_addr;
+                freeaddrinfo(res);
+            } else {
+                 CLOSE_SOCKET(m_socket);
+                 m_socket = SOCKET_INVALID;
+                 m_lastError = "Failed to resolve host: " + host;
+                 return false;
+            }
         }
 
         // Connect

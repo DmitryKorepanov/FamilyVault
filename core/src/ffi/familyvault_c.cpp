@@ -93,11 +93,7 @@ struct DuplicateFinderWrapper {
 // ═══════════════════════════════════════════════════════════
 
 char* alloc_string(const std::string& str) {
-    char* result = static_cast<char*>(std::malloc(str.size() + 1));
-    if (result) {
-        std::strcpy(result, str.c_str());
-    }
-    return result;
+    return fv_strdup(str.c_str());
 }
 
 static json fileRecordToJson(const FileRecord& f) {

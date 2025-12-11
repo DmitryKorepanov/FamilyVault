@@ -97,7 +97,14 @@ std::vector<std::pair<std::string, TagSource>> TagManager::generateAutoTagsForFi
     // Теги по дате
     if (file.modifiedAt > 0) {
         std::time_t time = static_cast<std::time_t>(file.modifiedAt);
-        std::tm* tm = std::localtime(&time);
+        std::tm tmBuf{};
+        std::tm* tm = &tmBuf;
+
+#ifdef _WIN32
+        if (localtime_s(&tmBuf, &time) != 0) tm = nullptr;
+#else
+        tm = std::localtime(&time);
+#endif
 
         if (tm) {
             // Год

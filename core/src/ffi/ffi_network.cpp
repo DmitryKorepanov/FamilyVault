@@ -38,17 +38,13 @@ std::string deviceInfoToJson(const FamilyVault::DeviceInfo& info) {
 
 char* allocString(const std::string& str) {
     if (str.empty()) return nullptr;
-    char* result = static_cast<char*>(malloc(str.size() + 1));
-    if (result) {
-        memcpy(result, str.c_str(), str.size() + 1);
-    }
-    return result;
+    return fv_strdup(str.c_str());
 }
 
 // Helper to allocate heap string for async callbacks
 // Caller (Dart) must call fv_free_string after reading
 const char* allocEventJson(const std::string& json) {
-    return strdup(json.c_str());
+    return fv_strdup(json.c_str());
 }
 
 } // anonymous namespace

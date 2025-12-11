@@ -190,7 +190,7 @@ std::string devicesToJsonArray(const std::vector<DeviceInfo>& devices) {
 // Helper to allocate heap string for async callbacks
 // Caller (Dart) must call fv_free_string after reading
 const char* allocEventJson(const std::string& json) {
-    return strdup(json.c_str());
+    return fv_strdup(json.c_str());
 }
 
 std::string remoteFilesToJson(const std::vector<RemoteFileRecord>& files) {
@@ -432,7 +432,7 @@ FV_API char* fv_network_get_discovered_devices(FVNetworkManager mgr) {
     try {
         auto* wrapper = reinterpret_cast<NetworkManagerWrapper*>(mgr);
         auto devices = wrapper->manager->getDiscoveredDevices();
-        return strdup(devicesToJsonArray(devices).c_str());
+        return fv_strdup(devicesToJsonArray(devices).c_str());
     } catch (...) {
         return nullptr;
     }
@@ -444,7 +444,7 @@ FV_API char* fv_network_get_connected_devices(FVNetworkManager mgr) {
     try {
         auto* wrapper = reinterpret_cast<NetworkManagerWrapper*>(mgr);
         auto devices = wrapper->manager->getConnectedDevices();
-        return strdup(devicesToJsonArray(devices).c_str());
+        return fv_strdup(devicesToJsonArray(devices).c_str());
     } catch (...) {
         return nullptr;
     }
@@ -519,7 +519,7 @@ FV_API char* fv_network_get_last_error(FVNetworkManager mgr) {
     
     auto* wrapper = reinterpret_cast<NetworkManagerWrapper*>(mgr);
     if (wrapper->lastError.empty()) return nullptr;
-    return strdup(wrapper->lastError.c_str());
+    return fv_strdup(wrapper->lastError.c_str());
 }
 
 FV_API FVError fv_network_set_database(FVNetworkManager mgr, FVDatabase db, const char* device_id) {
@@ -632,7 +632,7 @@ FV_API char* fv_network_get_remote_files(FVNetworkManager mgr) {
         if (!wrapper->syncManager) return nullptr;
         
         auto files = wrapper->syncManager->getAllRemoteFiles();
-        return strdup(remoteFilesToJson(files).c_str());
+        return fv_strdup(remoteFilesToJson(files).c_str());
     } catch (...) {
         return nullptr;
     }
@@ -646,7 +646,7 @@ FV_API char* fv_network_search_remote_files(FVNetworkManager mgr, const char* qu
         if (!wrapper->syncManager) return nullptr;
         
         auto files = wrapper->syncManager->searchRemoteFiles(query, limit);
-        return strdup(remoteFilesToJson(files).c_str());
+        return fv_strdup(remoteFilesToJson(files).c_str());
     } catch (...) {
         return nullptr;
     }
@@ -698,7 +698,7 @@ FV_API char* fv_sync_get_remote_files(FVIndexSyncManager mgr) {
     try {
         auto* syncMgr = reinterpret_cast<IndexSyncManager*>(mgr);
         auto files = syncMgr->getAllRemoteFiles();
-        return strdup(remoteFilesToJson(files).c_str());
+        return fv_strdup(remoteFilesToJson(files).c_str());
     } catch (...) {
         return nullptr;
     }
@@ -710,7 +710,7 @@ FV_API char* fv_sync_get_remote_files_from(FVIndexSyncManager mgr, const char* d
     try {
         auto* syncMgr = reinterpret_cast<IndexSyncManager*>(mgr);
         auto files = syncMgr->getRemoteFiles(device_id);
-        return strdup(remoteFilesToJson(files).c_str());
+        return fv_strdup(remoteFilesToJson(files).c_str());
     } catch (...) {
         return nullptr;
     }
@@ -722,7 +722,7 @@ FV_API char* fv_sync_search_remote(FVIndexSyncManager mgr, const char* query, in
     try {
         auto* syncMgr = reinterpret_cast<IndexSyncManager*>(mgr);
         auto files = syncMgr->searchRemoteFiles(query, limit);
-        return strdup(remoteFilesToJson(files).c_str());
+        return fv_strdup(remoteFilesToJson(files).c_str());
     } catch (...) {
         return nullptr;
     }
@@ -823,7 +823,7 @@ FV_API char* fv_network_request_file(FVNetworkManager mgr, const char* device_id
             spdlog::info("NetworkManager: File {}:{} already cached at {}", 
                          device_id, file_id, cachedPath);
             // Return "CACHED:path" so Dart knows it's a cache hit, not an error
-            return strdup(("CACHED:" + cachedPath).c_str());
+            return fv_strdup(("CACHED:" + cachedPath).c_str());
         }
         
         // Get peer connection
@@ -851,7 +851,7 @@ FV_API char* fv_network_request_file(FVNetworkManager mgr, const char* device_id
         
         spdlog::info("NetworkManager: Requested file {} ({}) from {}, request={}", 
                      file_id, file_name, device_id, requestId);
-        return strdup(requestId.c_str());
+        return fv_strdup(requestId.c_str());
     } catch (const std::exception& e) {
         setLastError(FV_ERROR_INTERNAL, e.what());
         return nullptr;
@@ -882,11 +882,11 @@ FV_API char* fv_network_get_active_transfers(FVNetworkManager mgr) {
     try {
         auto* wrapper = reinterpret_cast<NetworkManagerWrapper*>(mgr);
         if (!wrapper->fileAccess) {
-            return strdup("[]");
+            return fv_strdup("[]");
         }
         
         auto transfers = wrapper->fileAccess->getActiveTransfers();
-        return strdup(transfersToJsonArray(transfers).c_str());
+        return fv_strdup(transfersToJsonArray(transfers).c_str());
     } catch (...) {
         return nullptr;
     }
@@ -902,7 +902,7 @@ FV_API char* fv_network_get_transfer_progress(FVNetworkManager mgr, const char* 
         }
         
         auto progress = wrapper->fileAccess->getProgress(request_id);
-        return strdup(transferProgressToJson(progress).c_str());
+        return fv_strdup(transferProgressToJson(progress).c_str());
     } catch (...) {
         return nullptr;
     }
@@ -931,7 +931,7 @@ FV_API char* fv_network_get_cached_path(FVNetworkManager mgr, const char* device
         
         std::string path = wrapper->fileAccess->getCachedPath(device_id, file_id);
         if (path.empty()) return nullptr;
-        return strdup(path.c_str());
+        return fv_strdup(path.c_str());
     } catch (...) {
         return nullptr;
     }
