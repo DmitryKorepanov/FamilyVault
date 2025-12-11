@@ -8,7 +8,6 @@ set(TEST_SOURCES
     test_index_manager.cpp
     test_search_engine.cpp
     test_tags.cpp
-    test_text_extractor.cpp
     test_content_indexer.cpp
     test_file_scanner.cpp
     test_security.cpp
@@ -26,6 +25,11 @@ set(TEST_SOURCES
     test_state_machine.cpp
     test_loopback_integration.cpp
 )
+
+# Text extractor tests только когда ENABLE_TEXT_EXTRACTION=ON
+if(ENABLE_TEXT_EXTRACTION)
+    list(APPEND TEST_SOURCES test_text_extractor.cpp)
+endif()
 
 add_executable(familyvault_tests ${TEST_SOURCES})
 
@@ -57,7 +61,7 @@ add_test(NAME familyvault_tests
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/fixtures
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/)
 
-# Copy familyvault.dll to tests directory after build
+# Copy DLLs to tests directory after build
 if(WIN32)
     add_custom_command(TARGET familyvault_tests POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -65,6 +69,19 @@ if(WIN32)
             $<TARGET_FILE_DIR:familyvault_tests>/
         COMMENT "Copying familyvault.dll to tests directory"
     )
+    
+    # Copy vcpkg DLLs
+    set(VCPKG_BIN_DIR "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/bin")
+    foreach(DLL_NAME fmt sqlite3 spdlog libcrypto-3-x64 libssl-3-x64)
+        if(EXISTS "${VCPKG_BIN_DIR}/${DLL_NAME}.dll")
+            add_custom_command(TARGET familyvault_tests POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${VCPKG_BIN_DIR}/${DLL_NAME}.dll"
+                    $<TARGET_FILE_DIR:familyvault_tests>/
+                COMMENT "Copying ${DLL_NAME}.dll to tests directory"
+            )
+        endif()
+    endforeach()
     
     # Copy MSVCP140_ATOMIC_WAIT.dll (needed for std::mutex in C++20)
     if(EXISTS "C:/Windows/System32/MSVCP140_ATOMIC_WAIT.dll")
@@ -74,5 +91,24 @@ if(WIN32)
                 $<TARGET_FILE_DIR:familyvault_tests>/
             COMMENT "Copying MSVCP140_ATOMIC_WAIT.dll to tests directory"
         )
+    endif()
+    
+    # Copy text extraction DLLs when enabled
+    if(ENABLE_TEXT_EXTRACTION)
+        set(TEXT_EXTRACTION_DLLS
+            poppler poppler-cpp pugixml zip freetype libpng16
+            bz2 zlib1 brotlicommon brotlidec tiff openjp2 
+            jpeg62 liblzma iconv-2 charset-1
+        )
+        foreach(DLL_NAME ${TEXT_EXTRACTION_DLLS})
+            if(EXISTS "${VCPKG_BIN_DIR}/${DLL_NAME}.dll")
+                add_custom_command(TARGET familyvault_tests POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${VCPKG_BIN_DIR}/${DLL_NAME}.dll"
+                        $<TARGET_FILE_DIR:familyvault_tests>/
+                    COMMENT "Copying ${DLL_NAME}.dll to tests directory"
+                )
+            endif()
+        endforeach()
     endif()
 endif()
