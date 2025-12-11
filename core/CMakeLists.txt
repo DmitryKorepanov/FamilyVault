@@ -4,6 +4,7 @@
 set(CORE_SOURCES
     src/Database/Database.cpp
     src/Database/Migrations.cpp
+    src/Cloud/CloudAccountManager.cpp
     src/Index/IndexManager.cpp
     src/Index/FileScanner.cpp
     src/Index/ContentIndexer.cpp
@@ -23,6 +24,7 @@ set(CORE_SOURCES
     src/Utils/Types.cpp
     src/Utils/MimeTypeDetector.cpp
     src/ffi/familyvault_c.cpp
+    src/ffi/ffi_cloud.cpp
     src/ffi/ffi_secure.cpp
     src/ffi/ffi_network.cpp
     src/ffi/ffi_network_manager.cpp

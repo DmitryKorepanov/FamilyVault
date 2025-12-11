@@ -36,6 +36,11 @@ dependencies:
   qr_flutter: ^4.1.0
   mobile_scanner: ^5.1.1
   
+  # Cloud integration (OAuth2 & HTTP)
+  http: ^1.2.0
+  url_launcher: ^6.2.0
+  shelf: ^1.4.0
+  
   # Storage
   shared_preferences: ^2.2.2
 

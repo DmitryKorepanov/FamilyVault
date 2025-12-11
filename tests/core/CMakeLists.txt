@@ -8,6 +8,7 @@ set(TEST_SOURCES
     test_index_manager.cpp
     test_search_engine.cpp
     test_tags.cpp
+    test_cloud_account.cpp
     test_content_indexer.cpp
     test_file_scanner.cpp
     test_security.cpp

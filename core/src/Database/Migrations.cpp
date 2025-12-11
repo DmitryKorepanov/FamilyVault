@@ -180,6 +180,83 @@ DELETE FROM files_fts;
 INSERT INTO files_fts(rowid, name, relative_path, content)
 SELECT id, name, relative_path, '' FROM files;
     )SQL"}
+
+    ,
+    Migration{3, "Cloud accounts and files", R"SQL(
+-- Облачные аккаунты (метаданные)
+CREATE TABLE IF NOT EXISTS cloud_accounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL,
+    email TEXT NOT NULL,
+    display_name TEXT,
+    avatar_url TEXT,
+    change_token TEXT,
+    last_sync_at INTEGER,
+    file_count INTEGER DEFAULT 0,
+    enabled INTEGER DEFAULT 1,
+    created_at INTEGER DEFAULT (strftime('%s', 'now')),
+    UNIQUE(type, email)
+);
+
+-- Отслеживаемые папки в облаке
+CREATE TABLE IF NOT EXISTS cloud_watched_folders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id INTEGER NOT NULL,
+    cloud_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    path TEXT,
+    enabled INTEGER DEFAULT 1,
+    last_sync_at INTEGER,
+    UNIQUE(account_id, cloud_id),
+    FOREIGN KEY (account_id) REFERENCES cloud_accounts(id) ON DELETE CASCADE
+);
+
+-- Файлы из облака (индекс)
+CREATE TABLE IF NOT EXISTS cloud_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id INTEGER NOT NULL,
+    cloud_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    mime_type TEXT,
+    size INTEGER DEFAULT 0,
+    created_at INTEGER,
+    modified_at INTEGER,
+    parent_cloud_id TEXT,
+    path TEXT,
+    thumbnail_url TEXT,
+    web_view_url TEXT,
+    checksum TEXT,
+    indexed_at INTEGER DEFAULT (strftime('%s', 'now')),
+    UNIQUE(account_id, cloud_id),
+    FOREIGN KEY (account_id) REFERENCES cloud_accounts(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_cloud_files_account ON cloud_files(account_id);
+CREATE INDEX IF NOT EXISTS idx_cloud_files_name ON cloud_files(name);
+CREATE INDEX IF NOT EXISTS idx_cloud_files_modified ON cloud_files(modified_at DESC);
+
+-- Полнотекстовый поиск по cloud_files
+CREATE VIRTUAL TABLE IF NOT EXISTS cloud_files_fts USING fts5(
+    name,
+    path,
+    tokenize='unicode61 remove_diacritics 2'
+);
+
+CREATE TRIGGER IF NOT EXISTS cloud_files_fts_insert AFTER INSERT ON cloud_files BEGIN
+    INSERT INTO cloud_files_fts(rowid, name, path)
+    VALUES (new.id, new.name, COALESCE(new.path, ''));
+END;
+
+CREATE TRIGGER IF NOT EXISTS cloud_files_fts_delete AFTER DELETE ON cloud_files BEGIN
+    DELETE FROM cloud_files_fts WHERE rowid = old.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS cloud_files_fts_update AFTER UPDATE OF name, path ON cloud_files BEGIN
+    DELETE FROM cloud_files_fts WHERE rowid = old.id;
+    INSERT INTO cloud_files_fts(rowid, name, path)
+    VALUES (new.id, new.name, COALESCE(new.path, ''));
+END;
+    )SQL"}
 };
 
 // ═══════════════════════════════════════════════════════════

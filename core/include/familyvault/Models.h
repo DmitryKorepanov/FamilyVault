@@ -104,6 +104,37 @@ struct WatchedFolder {
 };
 
 // ═══════════════════════════════════════════════════════════
+// Облачный аккаунт
+// ═══════════════════════════════════════════════════════════
+
+struct CloudAccount {
+    int64_t id = 0;
+    std::string type;
+    std::string email;
+    std::optional<std::string> displayName;
+    std::optional<std::string> avatarUrl;
+    std::optional<std::string> changeToken;
+    std::optional<int64_t> lastSyncAt;
+    int64_t fileCount = 0;
+    bool enabled = true;
+    int64_t createdAt = 0;
+};
+
+// ═══════════════════════════════════════════════════════════
+// Облачная отслеживаемая папка
+// ═══════════════════════════════════════════════════════════
+
+struct CloudWatchedFolder {
+    int64_t id = 0;
+    int64_t accountId = 0;
+    std::string cloudId;
+    std::string name;
+    std::optional<std::string> path;
+    bool enabled = true;
+    std::optional<int64_t> lastSyncAt;
+};
+
+// ═══════════════════════════════════════════════════════════
 // Тег
 // ═══════════════════════════════════════════════════════════
 

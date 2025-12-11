@@ -228,6 +228,37 @@ struct WatchedFolder {
 };
 
 // ═══════════════════════════════════════════════════════════
+// Облачный аккаунт
+// ═══════════════════════════════════════════════════════════
+
+struct CloudAccount {
+    int64_t id = 0;
+    std::string type;
+    std::string email;
+    std::optional<std::string> displayName;
+    std::optional<std::string> avatarUrl;
+    std::optional<std::string> changeToken;
+    std::optional<int64_t> lastSyncAt;
+    int64_t fileCount = 0;
+    bool enabled = true;
+    int64_t createdAt = 0;
+};
+
+// ═══════════════════════════════════════════════════════════
+// Облачная отслеживаемая папка
+// ═══════════════════════════════════════════════════════════
+
+struct CloudWatchedFolder {
+    int64_t id = 0;
+    int64_t accountId = 0;
+    std::string cloudId;
+    std::string name;
+    std::optional<std::string> path;
+    bool enabled = true;
+    std::optional<int64_t> lastSyncAt;
+};
+
+// ═══════════════════════════════════════════════════════════
 // Тег
 // ═══════════════════════════════════════════════════════════
 
@@ -510,6 +541,75 @@ FV_API FVError fv_database_initialize(FVDatabase db);
 
 /// Проверить, инициализирована ли БД
 FV_API int32_t fv_database_is_initialized(FVDatabase db);
+
+// ═══════════════════════════════════════════════════════════
+// Cloud Accounts & Watched Folders
+// ═══════════════════════════════════════════════════════════
+
+/// Добавить облачный аккаунт. Возвращает ID аккаунта или -1 при ошибке.
+FV_API int64_t fv_cloud_account_add(FVDatabase db,
+                                    const char* type,
+                                    const char* email,
+                                    const char* display_name,
+                                    const char* avatar_url);
+
+/// Получить список аккаунтов (JSON array CloudAccount)
+FV_API char* fv_cloud_account_list(FVDatabase db);
+
+/// Удалить облачный аккаунт (каскадно удаляет папки и файлы)
+FV_API bool fv_cloud_account_remove(FVDatabase db, int64_t account_id);
+
+/// Включить/отключить облачный аккаунт
+FV_API bool fv_cloud_account_set_enabled(FVDatabase db, int64_t account_id, bool enabled);
+
+/// Обновить состояние синхронизации аккаунта (file_count, change_token)
+FV_API bool fv_cloud_account_update_sync(FVDatabase db,
+                                         int64_t account_id,
+                                         int64_t file_count,
+                                         const char* change_token);
+
+/// Добавить облачную папку для синхронизации. Возвращает ID папки или -1 при ошибке.
+FV_API int64_t fv_cloud_folder_add(FVDatabase db,
+                                   int64_t account_id,
+                                   const char* cloud_id,
+                                   const char* name,
+                                   const char* path);
+
+/// Удалить облачную папку
+FV_API bool fv_cloud_folder_remove(FVDatabase db, int64_t folder_id);
+
+/// Получить папки аккаунта (JSON array CloudWatchedFolder)
+FV_API char* fv_cloud_folder_list(FVDatabase db, int64_t account_id);
+
+/// Включить/отключить облачную папку
+FV_API bool fv_cloud_folder_set_enabled(FVDatabase db, int64_t folder_id, bool enabled);
+
+Примеры JSON:
+
+```json
+{
+  "id": 1,
+  "type": "google_drive",
+  "email": "user@example.com",
+  "displayName": "User",
+  "avatarUrl": "https://avatar",
+  "changeToken": "startToken",
+  "lastSyncAt": 1704240000,
+  "fileCount": 123,
+  "enabled": true,
+  "createdAt": 1704239000
+}
+
+{
+  "id": 10,
+  "accountId": 1,
+  "cloudId": "abcdef",
+  "name": "My Photos",
+  "path": "My Drive/Photos",
+  "enabled": true,
+  "lastSyncAt": null
+}
+```
 
 // ═══════════════════════════════════════════════════════════
 // Index Manager
@@ -1243,7 +1343,77 @@ const Migration MIGRATIONS[] = {
         DELETE FROM files_fts;
         INSERT INTO files_fts(rowid, name, relative_path, content) SELECT ...;
     )"},
-    // Migration 3 будет для cloud_accounts (Google Drive)
+    {3, "Cloud accounts and files", R"(
+        CREATE TABLE IF NOT EXISTS cloud_accounts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            type TEXT NOT NULL,
+            email TEXT NOT NULL,
+            display_name TEXT,
+            avatar_url TEXT,
+            change_token TEXT,
+            last_sync_at INTEGER,
+            file_count INTEGER DEFAULT 0,
+            enabled INTEGER DEFAULT 1,
+            created_at INTEGER DEFAULT (strftime('%s', 'now')),
+            UNIQUE(type, email)
+        );
+
+        CREATE TABLE IF NOT EXISTS cloud_watched_folders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL,
+            cloud_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            path TEXT,
+            enabled INTEGER DEFAULT 1,
+            last_sync_at INTEGER,
+            UNIQUE(account_id, cloud_id),
+            FOREIGN KEY (account_id) REFERENCES cloud_accounts(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS cloud_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL,
+            cloud_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            mime_type TEXT,
+            size INTEGER DEFAULT 0,
+            created_at INTEGER,
+            modified_at INTEGER,
+            parent_cloud_id TEXT,
+            path TEXT,
+            thumbnail_url TEXT,
+            web_view_url TEXT,
+            checksum TEXT,
+            indexed_at INTEGER DEFAULT (strftime('%s', 'now')),
+            UNIQUE(account_id, cloud_id),
+            FOREIGN KEY (account_id) REFERENCES cloud_accounts(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_cloud_files_account ON cloud_files(account_id);
+        CREATE INDEX IF NOT EXISTS idx_cloud_files_name ON cloud_files(name);
+        CREATE INDEX IF NOT EXISTS idx_cloud_files_modified ON cloud_files(modified_at DESC);
+
+        CREATE VIRTUAL TABLE IF NOT EXISTS cloud_files_fts USING fts5(
+            name,
+            path,
+            tokenize='unicode61 remove_diacritics 2'
+        );
+
+        CREATE TRIGGER IF NOT EXISTS cloud_files_fts_insert AFTER INSERT ON cloud_files BEGIN
+            INSERT INTO cloud_files_fts(rowid, name, path)
+            VALUES (new.id, new.name, COALESCE(new.path, ''));
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS cloud_files_fts_delete AFTER DELETE ON cloud_files BEGIN
+            DELETE FROM cloud_files_fts WHERE rowid = old.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS cloud_files_fts_update AFTER UPDATE OF name, path ON cloud_files BEGIN
+            DELETE FROM cloud_files_fts WHERE rowid = old.id;
+            INSERT INTO cloud_files_fts(rowid, name, path)
+            VALUES (new.id, new.name, COALESCE(new.path, ''));
+        END;
+    )"},
 };
 ```
 

@@ -47,22 +47,25 @@ public:
     template<typename... Args>
     void execute(const std::string& sql, Args&&... args) {
         auto stmt = prepare(sql);
+        // RAII guard for statement finalization
+        struct StmtGuard { Database& db; sqlite3_stmt* s; ~StmtGuard() { db.finalize(s); } } guard{*this, stmt};
+        
         bindAll(stmt, 1, std::forward<Args>(args)...);
         step(stmt);
-        finalize(stmt);
     }
 
     /// Запрос с маппером результатов
     template<typename T, typename Mapper, typename... Args>
     std::vector<T> query(const std::string& sql, Mapper mapper, Args&&... args) {
         auto stmt = prepare(sql);
+        struct StmtGuard { Database& db; sqlite3_stmt* s; ~StmtGuard() { db.finalize(s); } } guard{*this, stmt};
+        
         bindAll(stmt, 1, std::forward<Args>(args)...);
 
         std::vector<T> results;
         while (stepRow(stmt)) {
             results.push_back(mapper(stmt));
         }
-        finalize(stmt);
         return results;
     }
 
@@ -70,13 +73,14 @@ public:
     template<typename T, typename Mapper, typename... Args>
     std::optional<T> queryOne(const std::string& sql, Mapper mapper, Args&&... args) {
         auto stmt = prepare(sql);
+        struct StmtGuard { Database& db; sqlite3_stmt* s; ~StmtGuard() { db.finalize(s); } } guard{*this, stmt};
+        
         bindAll(stmt, 1, std::forward<Args>(args)...);
 
         std::optional<T> result;
         if (stepRow(stmt)) {
             result = mapper(stmt);
         }
-        finalize(stmt);
         return result;
     }
 
@@ -84,13 +88,14 @@ public:
     template<typename... Args>
     int64_t queryScalar(const std::string& sql, Args&&... args) {
         auto stmt = prepare(sql);
+        struct StmtGuard { Database& db; sqlite3_stmt* s; ~StmtGuard() { db.finalize(s); } } guard{*this, stmt};
+        
         bindAll(stmt, 1, std::forward<Args>(args)...);
 
         int64_t result = 0;
         if (stepRow(stmt)) {
             result = getInt64(stmt, 0);
         }
-        finalize(stmt);
         return result;
     }
 
@@ -99,26 +104,28 @@ public:
     std::vector<T> queryDynamic(const std::string& sql, Mapper mapper, 
                                 const std::vector<SqlParam>& params) {
         auto stmt = prepare(sql);
+        struct StmtGuard { Database& db; sqlite3_stmt* s; ~StmtGuard() { db.finalize(s); } } guard{*this, stmt};
+        
         bindDynamicParams(stmt, params);
 
         std::vector<T> results;
         while (stepRow(stmt)) {
             results.push_back(mapper(stmt));
         }
-        finalize(stmt);
         return results;
     }
 
     /// Запрос скалярного значения с динамическими параметрами
     int64_t queryScalarDynamic(const std::string& sql, const std::vector<SqlParam>& params) {
         auto stmt = prepare(sql);
+        struct StmtGuard { Database& db; sqlite3_stmt* s; ~StmtGuard() { db.finalize(s); } } guard{*this, stmt};
+        
         bindDynamicParams(stmt, params);
 
         int64_t result = 0;
         if (stepRow(stmt)) {
             result = getInt64(stmt, 0);
         }
-        finalize(stmt);
         return result;
     }
 

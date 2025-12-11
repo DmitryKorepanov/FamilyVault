@@ -84,6 +84,48 @@ FV_API FVError fv_database_initialize(FVDatabase db);
 FV_API int32_t fv_database_is_initialized(FVDatabase db);
 
 // ═══════════════════════════════════════════════════════════
+// Cloud Accounts & Watched Folders
+// ═══════════════════════════════════════════════════════════
+
+/// Добавить облачный аккаунт. Возвращает ID аккаунта или -1 при ошибке.
+FV_API int64_t fv_cloud_account_add(FVDatabase db,
+                                    const char* type,
+                                    const char* email,
+                                    const char* display_name,
+                                    const char* avatar_url);
+
+/// Получить список аккаунтов (JSON array CloudAccount)
+FV_API char* fv_cloud_account_list(FVDatabase db);
+
+/// Удалить облачный аккаунт (каскадно удаляет папки и файлы)
+FV_API bool fv_cloud_account_remove(FVDatabase db, int64_t account_id);
+
+/// Включить/отключить облачный аккаунт
+FV_API bool fv_cloud_account_set_enabled(FVDatabase db, int64_t account_id, bool enabled);
+
+/// Обновить состояние синхронизации аккаунта (file_count, change_token)
+FV_API bool fv_cloud_account_update_sync(FVDatabase db,
+                                         int64_t account_id,
+                                         int64_t file_count,
+                                         const char* change_token);
+
+/// Добавить облачную папку для синхронизации. Возвращает ID папки или -1 при ошибке.
+FV_API int64_t fv_cloud_folder_add(FVDatabase db,
+                                   int64_t account_id,
+                                   const char* cloud_id,
+                                   const char* name,
+                                   const char* path);
+
+/// Удалить облачную папку
+FV_API bool fv_cloud_folder_remove(FVDatabase db, int64_t folder_id);
+
+/// Получить папки аккаунта (JSON array CloudWatchedFolder)
+FV_API char* fv_cloud_folder_list(FVDatabase db, int64_t account_id);
+
+/// Включить/отключить облачную папку
+FV_API bool fv_cloud_folder_set_enabled(FVDatabase db, int64_t folder_id, bool enabled);
+
+// ═══════════════════════════════════════════════════════════
 // Index Manager
 // ═══════════════════════════════════════════════════════════
 
