@@ -1291,10 +1291,22 @@ $GIT_DIFF
             if git diff --quiet && git diff --staged --quiet; then
                 warn "Нет изменений для коммита."
             else
+                # Извлекаем Commit Message из ответа кодера
+                COMMIT_MSG=$(echo "$CODER_RESPONSE" | sed -n '/### Commit Message/,$p' | tail -n +2 | awk '/^#/{exit} {print}' | awk '/^```/{exit} {print}' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+
+                # Если сообщение пустое, используем дефолтное
+                if [ -z "$COMMIT_MSG" ]; then
+                    COMMIT_MSG="feat: iteration $ITER completed (auto)"
+                else
+                    # Очищаем от лишних пустых строк
+                    COMMIT_MSG=$(echo "$COMMIT_MSG" | sed '/./,$!d' | sed -e :a -e '/^\n*$/{$d;N;};/\n$/ba')
+                fi
+
                 log "GIT" "Коммичу изменения итерации $ITER..."
                 git add .
-                git commit -m "feat: iteration $ITER completed (auto)"
-                success "Закоммичено: feat: iteration $ITER completed (auto)"
+                git commit -m "$COMMIT_MSG"
+                success "Закоммичено:"
+                echo "$COMMIT_MSG" | sed 's/^/  /'
             fi
             
             # Если --only, завершаем после одной итерации
