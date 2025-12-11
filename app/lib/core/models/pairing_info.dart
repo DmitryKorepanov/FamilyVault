@@ -37,11 +37,19 @@ class PairingInfo {
       DateTime.fromMillisecondsSinceEpoch(createdAt * 1000);
 
   factory PairingInfo.fromJson(Map<String, dynamic> json) {
+    final pin = json['pin'] as String? ?? '';
+    final qrData = json['qrData'] as String? ?? '';
+    final expiresAtRaw = json['expiresAt'];
+    final createdAtRaw = json['createdAt'];
+
+    final expiresAt = expiresAtRaw is num ? expiresAtRaw.toInt() : 0;
+    final createdAt = createdAtRaw is num ? createdAtRaw.toInt() : 0;
+
     return PairingInfo(
-      pin: json['pin'] as String,
-      qrData: json['qrData'] as String,
-      expiresAt: json['expiresAt'] as int,
-      createdAt: json['createdAt'] as int,
+      pin: pin,
+      qrData: qrData,
+      expiresAt: expiresAt,
+      createdAt: createdAt,
     );
   }
 

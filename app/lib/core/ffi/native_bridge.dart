@@ -1724,13 +1724,18 @@ class NativeBridge {
     if (_familyPairing != null) return;
 
     _secureStorage = _fvSecureCreate();
-    if (_secureStorage == nullptr) {
+    if (_secureStorage == null || _secureStorage == nullptr) {
       _checkLastError('Failed to create secure storage');
+      _secureStorage = null;
+      throw StateError('Failed to create secure storage');
     }
 
     _familyPairing = _fvPairingCreate(_secureStorage!);
-    if (_familyPairing == nullptr) {
+    if (_familyPairing == null || _familyPairing == nullptr) {
       _checkLastError('Failed to create family pairing');
+      _fvSecureDestroy(_secureStorage!);
+      _secureStorage = null;
+      throw StateError('Failed to create family pairing');
     }
   }
 
@@ -1971,6 +1976,7 @@ class NativeBridge {
     _networkDiscovery ??= _fvDiscoveryCreate();
     if (_networkDiscovery == null || _networkDiscovery == nullptr) {
       _checkLastError('Failed to create network discovery');
+      return;
     }
 
     final error = _fvDiscoveryStart(
@@ -2094,6 +2100,8 @@ class NativeBridge {
     _networkManager = _fvNetworkCreate(_familyPairing!);
     if (_networkManager == nullptr) {
       _checkLastError('Failed to create network manager');
+      _networkManager = null;
+      throw StateError('Failed to create network manager');
     }
   }
 
@@ -2111,11 +2119,11 @@ class NativeBridge {
     void Function(int event, String jsonData)? onEvent,
   }) {
     _ensureNetworkManager();
-    
-    // Cleanup previous callback if any
-    _networkCallback?.close();
+
+    // Keep previous callback until new start succeeds
+    final previousCallback = _networkCallback;
     _networkCallback = null;
-    
+
     Pointer<NativeFunction<Void Function(Int32, Pointer<Utf8>, Pointer<Void>)>> callbackPtr = nullptr;
     
     if (onEvent != null) {
@@ -2132,8 +2140,22 @@ class NativeBridge {
       callbackPtr = _networkCallback!.nativeFunction;
     }
     
-    final error = _fvNetworkStart(_networkManager!, port, callbackPtr, nullptr);
-    _checkError(error, 'Failed to start network');
+    try {
+      final error = _fvNetworkStart(_networkManager!, port, callbackPtr, nullptr);
+      _checkError(error, 'Failed to start network');
+      // New start succeeded — safe to close previous callback
+      previousCallback?.close();
+    } catch (e) {
+      // Ensure native state is cleaned before touching the callback
+      if (_networkManager != null && _networkManager != nullptr) {
+        _fvNetworkStop(_networkManager!);
+      }
+      // Close new callback allocated for this start attempt
+      _networkCallback?.close();
+      // Restore previous callback so native side (if already registered) still has a valid target
+      _networkCallback = previousCallback;
+      rethrow;
+    }
   }
 
   /// Остановить P2P сеть
@@ -2302,12 +2324,16 @@ class NativeBridge {
 
   List<RemoteFileRecord> _parseRemoteFilePointer(Pointer<Utf8> ptr) {
     if (ptr == nullptr) return [];
+    String jsonStr;
     try {
-      final jsonStr = ptr.toDartString();
-      _fvFreeString(ptr);
+      jsonStr = ptr.toDartString();
+    } finally {
+      _fvFreeString(ptr); // free exactly once
+    }
+
+    try {
       return _decodeRemoteFiles(jsonStr);
     } catch (_) {
-      _fvFreeString(ptr);
       return [];
     }
   }
@@ -2547,6 +2573,8 @@ class NativeBridge {
       _indexSyncManager = _fvSyncCreate(_database!, deviceIdPtr);
       if (_indexSyncManager == nullptr) {
         _checkLastError('Failed to create sync manager');
+        _indexSyncManager = null;
+        throw StateError('Failed to create sync manager');
       }
     } finally {
       calloc.free(deviceIdPtr);

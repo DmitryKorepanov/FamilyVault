@@ -285,7 +285,7 @@ struct SearchQuery {
     std::vector<std::string> tags;              // Должен иметь ВСЕ теги
     std::vector<std::string> excludeTags;
     std::optional<Visibility> visibility;
-    bool includeRemote = false;                 // По умолчанию: только локальные файлы
+    bool includeRemote = true;                  // По умолчанию: локальные и удаленные файлы
     
     int32_t limit = 100;
     int32_t offset = 0;
@@ -419,7 +419,7 @@ struct DuplicateGroup {
   "tags": ["vacation"],
   "excludeTags": [],
   "visibility": null,
-  "includeRemote": false,
+  "includeRemote": true,
   "limit": 50,
   "offset": 0,
   "sortBy": 2,
