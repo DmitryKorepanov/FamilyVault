@@ -17,7 +17,7 @@ void main() {
         expect(query.offset, 0);
         expect(query.sortBy, SortBy.relevance);
         expect(query.sortAsc, false);
-        expect(query.includeRemote, false);
+        expect(query.includeRemote, true);
       });
 
       test('empty factory creates default query', () {
@@ -33,6 +33,7 @@ void main() {
 
         expect(query.text, '');
         expect(query.limit, 100);
+        expect(query.includeRemote, true);
       });
 
       test('parses full JSON', () {

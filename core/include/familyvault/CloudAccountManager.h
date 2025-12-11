@@ -38,6 +38,10 @@ public:
     bool removeWatchedFolder(int64_t folderId);
     bool setWatchedFolderEnabled(int64_t folderId, bool enabled);
 
+    bool upsertCloudFile(int64_t accountId, const CloudFile& file);
+    bool removeCloudFile(int64_t accountId, const std::string& cloudId);
+    bool removeAllCloudFiles(int64_t accountId);
+
 private:
     std::shared_ptr<Database> m_db;
 

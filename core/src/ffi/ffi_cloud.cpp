@@ -277,4 +277,103 @@ bool fv_cloud_folder_set_enabled(FVDatabase db, int64_t folder_id, bool enabled)
     }
 }
 
+bool fv_cloud_file_upsert(FVDatabase db, int64_t account_id, const char* file_json) {
+    if (!db || !file_json) {
+        setLastError(FV_ERROR_INVALID_ARGUMENT, "Database and file JSON are required");
+        return false;
+    }
+
+    try {
+        auto* holder = reinterpret_cast<DatabaseHolder*>(db);
+        CloudAccountManager manager(holder->getDatabase());
+        
+        json j = json::parse(file_json);
+        CloudFile file;
+        
+        // Required fields
+        file.cloudId = j["cloudId"].get<std::string>();
+        file.name = j["name"].get<std::string>();
+        file.mimeType = j.value("mimeType", "application/octet-stream");
+        
+        // Optional fields
+        file.size = j.value("size", 0LL);
+        file.createdAt = j.value("createdAt", 0LL);
+        file.modifiedAt = j.value("modifiedAt", 0LL);
+        
+        if (j.contains("parentCloudId") && !j["parentCloudId"].is_null()) {
+            file.parentCloudId = j["parentCloudId"].get<std::string>();
+        }
+        if (j.contains("path") && !j["path"].is_null()) {
+            file.path = j["path"].get<std::string>();
+        }
+        if (j.contains("thumbnailUrl") && !j["thumbnailUrl"].is_null()) {
+            file.thumbnailUrl = j["thumbnailUrl"].get<std::string>();
+        }
+        if (j.contains("webViewUrl") && !j["webViewUrl"].is_null()) {
+            file.webViewUrl = j["webViewUrl"].get<std::string>();
+        }
+        if (j.contains("checksum") && !j["checksum"].is_null()) {
+            file.checksum = j["checksum"].get<std::string>();
+        }
+        file.indexedAt = j.value("indexedAt", 0LL);
+
+        bool result = manager.upsertCloudFile(account_id, file);
+        if (!result) {
+            setLastError(FV_ERROR_INTERNAL, "Failed to upsert cloud file");
+            return false;
+        }
+        
+        setLastError(FV_OK);
+        return true;
+    } catch (const json::exception& ex) {
+        setLastError(FV_ERROR_INVALID_ARGUMENT, std::string("JSON parse error: ") + ex.what());
+        return false;
+    } catch (const std::exception& ex) {
+        setLastError(FV_ERROR_DATABASE, ex.what());
+        return false;
+    }
+}
+
+bool fv_cloud_file_remove(FVDatabase db, int64_t account_id, const char* cloud_id) {
+    if (!db || !cloud_id) {
+        setLastError(FV_ERROR_INVALID_ARGUMENT, "Database and cloudId are required");
+        return false;
+    }
+
+    try {
+        auto* holder = reinterpret_cast<DatabaseHolder*>(db);
+        CloudAccountManager manager(holder->getDatabase());
+        bool removed = manager.removeCloudFile(account_id, cloud_id);
+        
+        // It's okay if it doesn't exist, we just want it gone. 
+        // But removeCloudFile returns false if 0 rows affected.
+        // Let's treat it as success for the caller, or just follow C++ API behavior.
+        // Usually remove APIs return false if nothing found.
+        
+        setLastError(FV_OK);
+        return removed;
+    } catch (const std::exception& ex) {
+        setLastError(FV_ERROR_DATABASE, ex.what());
+        return false;
+    }
+}
+
+bool fv_cloud_file_remove_all(FVDatabase db, int64_t account_id) {
+    if (!db) {
+        setLastError(FV_ERROR_INVALID_ARGUMENT, "Database is required");
+        return false;
+    }
+
+    try {
+        auto* holder = reinterpret_cast<DatabaseHolder*>(db);
+        CloudAccountManager manager(holder->getDatabase());
+        bool removed = manager.removeAllCloudFiles(account_id);
+        setLastError(FV_OK);
+        return removed;
+    } catch (const std::exception& ex) {
+        setLastError(FV_ERROR_DATABASE, ex.what());
+        return false;
+    }
+}
+
 } // extern "C"

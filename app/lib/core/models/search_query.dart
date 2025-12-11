@@ -31,7 +31,7 @@ class SearchQuery {
     this.tags = const [],
     this.excludeTags = const [],
     this.visibility,
-    this.includeRemote = false,
+    this.includeRemote = true,
     this.limit = 100,
     this.offset = 0,
     this.sortBy = SortBy.relevance,
@@ -61,7 +61,7 @@ class SearchQuery {
       visibility: json['visibility'] != null
           ? Visibility.fromValue(json['visibility'] as int)
           : null,
-      includeRemote: json['includeRemote'] as bool? ?? false,
+      includeRemote: json['includeRemote'] as bool? ?? true,
       limit: json['limit'] as int? ?? 100,
       offset: json['offset'] as int? ?? 0,
       sortBy: SortBy.fromValue(json['sortBy'] as int? ?? 0),

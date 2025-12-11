@@ -1,4 +1,5 @@
 #include "familyvault/CloudAccountManager.h"
+#include "familyvault/MimeTypeDetector.h"
 #include <spdlog/spdlog.h>
 #include <chrono>
 #include <stdexcept>
@@ -187,6 +188,74 @@ bool CloudAccountManager::setWatchedFolderEnabled(int64_t folderId, bool enabled
         "UPDATE cloud_watched_folders SET enabled = ? WHERE id = ?",
         enabled ? 1 : 0,
         folderId);
+    return m_db->changesCount() > 0;
+}
+
+bool CloudAccountManager::upsertCloudFile(int64_t accountId, const CloudFile& file) {
+    if (file.cloudId.empty() || file.name.empty()) {
+        throw std::invalid_argument("cloudId and name are required");
+    }
+
+    std::string extension = MimeTypeDetector::extractExtension(file.name);
+    ContentType contentType = MimeTypeDetector::mimeToContentType(file.mimeType);
+
+    m_db->execute(
+        R"SQL(
+        INSERT INTO cloud_files (
+            account_id, cloud_id, name, mime_type, size, 
+            created_at, modified_at, parent_cloud_id, path, 
+            thumbnail_url, web_view_url, checksum, indexed_at,
+            extension, content_type
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(account_id, cloud_id) DO UPDATE SET
+            name = excluded.name,
+            mime_type = excluded.mime_type,
+            size = excluded.size,
+            created_at = excluded.created_at,
+            modified_at = excluded.modified_at,
+            parent_cloud_id = excluded.parent_cloud_id,
+            path = excluded.path,
+            thumbnail_url = excluded.thumbnail_url,
+            web_view_url = excluded.web_view_url,
+            checksum = excluded.checksum,
+            indexed_at = excluded.indexed_at,
+            extension = excluded.extension,
+            content_type = excluded.content_type
+        )SQL",
+        accountId,
+        file.cloudId,
+        file.name,
+        file.mimeType,
+        file.size,
+        file.createdAt,
+        file.modifiedAt,
+        file.parentCloudId ? file.parentCloudId->c_str() : nullptr,
+        file.path ? file.path->c_str() : nullptr,
+        file.thumbnailUrl ? file.thumbnailUrl->c_str() : nullptr,
+        file.webViewUrl ? file.webViewUrl->c_str() : nullptr,
+        file.checksum ? file.checksum->c_str() : nullptr,
+        file.indexedAt > 0 ? file.indexedAt : nowSeconds(),
+        extension,
+        static_cast<int>(contentType)
+    );
+
+    return true;
+}
+
+bool CloudAccountManager::removeCloudFile(int64_t accountId, const std::string& cloudId) {
+    m_db->execute(
+        "DELETE FROM cloud_files WHERE account_id = ? AND cloud_id = ?",
+        accountId, cloudId
+    );
+    return m_db->changesCount() > 0;
+}
+
+bool CloudAccountManager::removeAllCloudFiles(int64_t accountId) {
+    m_db->execute(
+        "DELETE FROM cloud_files WHERE account_id = ?",
+        accountId
+    );
     return m_db->changesCount() > 0;
 }
 

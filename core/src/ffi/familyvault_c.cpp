@@ -116,6 +116,13 @@ static json fileRecordToJson(const FileRecord& f) {
     j["isRemote"] = f.isRemote;
     j["syncVersion"] = f.syncVersion;
     j["lastModifiedBy"] = f.lastModifiedBy.has_value() ? json(f.lastModifiedBy.value()) : json(nullptr);
+    
+    // Cloud info
+    j["cloudAccountId"] = f.cloudAccountId.has_value() ? json(f.cloudAccountId.value()) : json(nullptr);
+    j["cloudId"] = f.cloudId.has_value() ? json(f.cloudId.value()) : json(nullptr);
+    j["webViewUrl"] = f.webViewUrl.has_value() ? json(f.webViewUrl.value()) : json(nullptr);
+    j["thumbnailUrl"] = f.thumbnailUrl.has_value() ? json(f.thumbnailUrl.value()) : json(nullptr);
+
     j["tags"] = f.tags;
     return j;
 }

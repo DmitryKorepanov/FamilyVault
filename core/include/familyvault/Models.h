@@ -65,6 +65,12 @@ struct FileRecord {
     std::optional<std::string> sourceDeviceId;
     bool isRemote = false;
 
+    // Cloud info
+    std::optional<int64_t> cloudAccountId;
+    std::optional<std::string> cloudId;
+    std::optional<std::string> webViewUrl;
+    std::optional<std::string> thumbnailUrl;
+
     // Sync: для conflict resolution
     int64_t syncVersion = 0;
     std::optional<std::string> lastModifiedBy;  // deviceId
@@ -135,6 +141,27 @@ struct CloudWatchedFolder {
 };
 
 // ═══════════════════════════════════════════════════════════
+// Облачный файл
+// ═══════════════════════════════════════════════════════════
+
+struct CloudFile {
+    int64_t id = 0;
+    int64_t accountId = 0;
+    std::string cloudId;
+    std::string name;
+    std::string mimeType;
+    int64_t size = 0;
+    int64_t createdAt = 0;
+    int64_t modifiedAt = 0;
+    std::optional<std::string> parentCloudId;
+    std::optional<std::string> path;
+    std::optional<std::string> thumbnailUrl;
+    std::optional<std::string> webViewUrl;
+    std::optional<std::string> checksum;
+    int64_t indexedAt = 0;
+};
+
+// ═══════════════════════════════════════════════════════════
 // Тег
 // ═══════════════════════════════════════════════════════════
 
@@ -161,7 +188,7 @@ struct SearchQuery {
     std::vector<std::string> tags;              // Должен иметь ВСЕ теги
     std::vector<std::string> excludeTags;
     std::optional<Visibility> visibility;
-    bool includeRemote = false;                 // По умолчанию: только локальные
+    bool includeRemote = true;                 // По умолчанию: локальные и удаленные
 
     int32_t limit = 100;
     int32_t offset = 0;

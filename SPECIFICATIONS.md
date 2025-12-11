@@ -584,6 +584,16 @@ FV_API char* fv_cloud_folder_list(FVDatabase db, int64_t account_id);
 /// Включить/отключить облачную папку
 FV_API bool fv_cloud_folder_set_enabled(FVDatabase db, int64_t folder_id, bool enabled);
 
+/// Добавить/обновить файл из облака
+/// @param file_json JSON объект CloudFile
+FV_API bool fv_cloud_file_upsert(FVDatabase db, int64_t account_id, const char* file_json);
+
+/// Удалить файл из облака
+FV_API bool fv_cloud_file_remove(FVDatabase db, int64_t account_id, const char* cloud_id);
+
+/// Удалить все файлы аккаунта
+FV_API bool fv_cloud_file_remove_all(FVDatabase db, int64_t account_id);
+
 Примеры JSON:
 
 ```json
